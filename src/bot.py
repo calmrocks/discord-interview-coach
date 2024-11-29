@@ -15,11 +15,12 @@ class InterviewCoach(commands.Bot):
         )
 
     async def setup_hook(self):
-        try:
-            await self.load_extension('src.cogs.utils')
-            print('Successfully loaded utils cog')
-        except Exception as e:
-            print(f'Failed to load utils cog: {e}')
+        for cog in ['cogs.utils', 'cogs.interview']:
+            try:
+                await self.load_extension(f'src.{cog}')
+                print(f'Successfully loaded {cog}')
+            except Exception as e:
+                print(f'Failed to load {cog}: {e}')
 
     async def on_ready(self):
         print(f'{self.user} has connected to Discord!')

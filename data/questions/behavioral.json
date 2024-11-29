@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "type": "behavioral",
+    "version": "1.0",
+    "description": "Behavioral interview questions"
+  },
+  "questions": [
+    {
+      "id": "b1",
+      "question": "Tell me about a time you faced a challenging situation at work.",
+      "category": "problem_solving",
+      "difficulty": "medium",
+      "follow_up": "What did you learn from this experience?",
+      "keywords": ["challenge", "resolution", "learning"]
+    }
+  ]
+}

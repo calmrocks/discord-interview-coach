@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "type": "technical",
+    "version": "1.0",
+    "description": "Technical interview questions"
+  },
+  "questions": [
+    {
+      "id": "t1",
+      "question": "What is the difference between a list and a tuple in Python?",
+      "category": "python",
+      "difficulty": "easy",
+      "follow_up": "Can you provide examples of when to use each?",
+      "keywords": ["mutability", "performance", "data structures"]
+    },
+    {
+      "id": "t2",
+      "question": "Explain the concept of time complexity.",
+      "category": "algorithms",
+      "difficulty": "medium",
+      "follow_up": "Can you give examples of O(n) and O(n²) algorithms?",
+      "keywords": ["big O", "complexity", "performance"]
+    }
+  ]
+}
