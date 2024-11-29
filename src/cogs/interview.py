@@ -138,50 +138,69 @@ class Interview(commands.Cog):
                 answer
             )
 
-            print(feedback)
             if "error" in feedback:
                 await ctx.send("Sorry, I couldn't generate feedback at this time.")
                 return
 
-            # Create feedback embed
-            embed = discord.Embed(
-                title="Answer Evaluation",
+            # Split feedback into multiple embeds
+            # First embed: Bar Assessment and Strengths
+            embed1 = discord.Embed(
+                title="Answer Evaluation (1/2)",
                 color=discord.Color.blue() if feedback["bar_assessment"] == "Meeting the Bar"
                 else discord.Color.green() if feedback["bar_assessment"] == "Raising the Bar"
                 else discord.Color.red()
             )
 
-            embed.add_field(
+            embed1.add_field(
                 name="Bar Assessment",
                 value=feedback["bar_assessment"],
                 inline=False
             )
 
-            embed.add_field(
+            embed1.add_field(
                 name="Key Strengths",
-                value="\n".join(f"• {s}" for s in feedback["strengths"]),
+                value="\n".join(f"• {s}" for s in feedback["strengths"])[:1024],
                 inline=False
             )
 
-            embed.add_field(
+            # Second embed: Improvements and Follow-up
+            embed2 = discord.Embed(
+                title="Answer Evaluation (2/2)",
+                color=embed1.color
+            )
+
+            # Split long better answer into chunks if needed
+            better_answer = feedback["better_answer"]
+            if len(better_answer) > 1024:
+                chunks = [better_answer[i:i+1024] for i in range(0, len(better_answer), 1024)]
+                for i, chunk in enumerate(chunks):
+                    embed2.add_field(
+                        name=f"Suggested Better Answer (Part {i+1})",
+                        value=chunk,
+                        inline=False
+                    )
+            else:
+                embed2.add_field(
+                    name="Suggested Better Answer",
+                    value=better_answer,
+                    inline=False
+                )
+
+            embed2.add_field(
                 name="Areas for Improvement",
-                value="\n".join(f"• {i}" for i in feedback["improvements"]),
+                value="\n".join(f"• {i}" for i in feedback["improvements"])[:1024],
                 inline=False
             )
 
-            embed.add_field(
-                name="Suggested Better Answer",
-                value=feedback["better_answer"],
-                inline=False
-            )
-
-            embed.add_field(
+            embed2.add_field(
                 name="Follow-up Questions",
-                value="\n".join(f"• {q}" for q in feedback["follow_up"]),
+                value="\n".join(f"• {q}" for q in feedback["follow_up"])[:1024],
                 inline=False
             )
 
-            await ctx.send(embed=embed)
+            # Send both embeds
+            await ctx.send(embed=embed1)
+            await ctx.send(embed=embed2)
 
             # Clear the current question
             del self.current_questions[ctx.author.id]
