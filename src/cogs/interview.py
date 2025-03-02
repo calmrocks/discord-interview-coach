@@ -9,8 +9,9 @@ class InterviewSession:
     def __init__(self, user_id: int, interview_type: str):
         self.user_id = user_id
         self.interview_type = interview_type
+        self.difficulty = None
         self.current_question = None
-        self.status = "active"  # possible states: "active", "waiting_for_answer", "completed"
+        self.status = "selecting_difficulty"  # possible states: "selecting_difficulty", "waiting_for_answer", "completed"
         self.start_time = discord.utils.utcnow()
 
 class Interview(commands.Cog):
@@ -61,43 +62,74 @@ class Interview(commands.Cog):
                 "Please enable DMs from server members and try again!"
             )
 
+    async def send_difficulty_selection(self, user: discord.User):
+        """Send difficulty level selection message"""
+        embed = discord.Embed(
+            title="Select Difficulty Level",
+            description="Please choose the difficulty level for your interview:",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="🟢 Entry Level", value="Basic questions suitable for beginners", inline=False)
+        embed.add_field(name="🟡 Medium", value="Intermediate level questions", inline=False)
+        embed.add_field(name="🔴 Hard", value="Advanced questions for experienced professionals", inline=False)
+
+        # Send and store the selection message
+        difficulty_msg = await user.send(embed=embed)
+        self.pending_selection[user.id] = difficulty_msg
+
+        # Add reaction options
+        reactions = ['🟢', '🟡', '🔴']
+        for reaction in reactions:
+            await difficulty_msg.add_reaction(reaction)
+
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
-        """Handle interview type selection"""
+        """Handle interview type and difficulty selection"""
         if user.bot:
             return
 
         if user.id in self.pending_selection:
             selection_msg = self.pending_selection[user.id]
             if reaction.message.id == selection_msg.id:
-                reaction_types = {
-                    '💻': 'technical',
-                    '👥': 'behavioral',
-                    '📊': 'system_design'
-                }
+                session = self.active_sessions.get(user.id)
 
-                if str(reaction.emoji) in reaction_types:
-                    interview_type = reaction_types[str(reaction.emoji)]
+                if session is None:
+                    # Handle interview type selection
+                    reaction_types = {
+                        '💻': 'technical',
+                        '👥': 'behavioral',
+                        '📊': 'system_design'
+                    }
 
-                    # Create new interview session
-                    session = InterviewSession(user.id, interview_type)
-                    self.active_sessions[user.id] = session
+                    if str(reaction.emoji) in reaction_types:
+                        interview_type = reaction_types[str(reaction.emoji)]
+                        session = InterviewSession(user.id, interview_type)
+                        self.active_sessions[user.id] = session
+                        del self.pending_selection[user.id]
+                        await self.send_difficulty_selection(user)
 
-                    # Clean up pending selection
-                    del self.pending_selection[user.id]
+                else:
+                    # Handle difficulty selection
+                    difficulty_levels = {
+                        '🟢': 'easy',
+                        '🟡': 'medium',
+                        '🔴': 'hard'
+                    }
 
-                    # Start the interview immediately
-                    await self.start_interview_question(user)
+                    if str(reaction.emoji) in difficulty_levels:
+                        session.difficulty = difficulty_levels[str(reaction.emoji)]
+                        del self.pending_selection[user.id]
+                        await self.start_interview_question(user)
 
     async def start_interview_question(self, user: discord.User):
         """Send the first question to the user"""
         session = self.active_sessions[user.id]
 
         try:
-            # Get a random question
+            # Get a random question with the selected difficulty
             question_data = self.question_provider.get_random_question(
                 session.interview_type,
-                "medium"
+                session.difficulty
             )
 
             # Store the current question
@@ -106,7 +138,7 @@ class Interview(commands.Cog):
 
             # Create and send question embed
             embed = discord.Embed(
-                title="Interview Question",
+                title=f"{session.interview_type.title()} Interview - {session.difficulty.title()} Level",
                 description=question_data["question"],
                 color=discord.Color.blue()
             )
@@ -121,6 +153,19 @@ class Interview(commands.Cog):
             )
 
             await user.send(embed=embed)
+
+        except ValueError as e:
+            # Handle the case when no questions are found
+            error_embed = discord.Embed(
+                title="No Questions Available",
+                description=f"Sorry, no questions are available for {session.interview_type} at {session.difficulty} level. Please try a different combination.",
+                color=discord.Color.red()
+            )
+            await user.send(embed=error_embed)
+
+            # Restart the selection process
+            session.status = "selecting_difficulty"
+            await self.send_difficulty_selection(user)
 
         except Exception as e:
             await user.send(f"Error getting question: {str(e)}")
@@ -151,7 +196,7 @@ class Interview(commands.Cog):
                         # Generate interview summary
                         summary = self.llm_provider.generate_interview_summary(
                             session.interview_type,
-                            "medium",
+                            session.difficulty,
                             [{
                                 "question": session.current_question["question"],
                                 "answer": message.content

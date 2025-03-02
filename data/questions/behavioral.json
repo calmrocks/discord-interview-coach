@@ -17,7 +17,7 @@
       "id": "b2",
       "question": "Describe a situation where you had to work with a difficult team member.",
       "category": "teamwork",
-      "difficulty": "mid",
+      "difficulty": "medium",
       "follow_up": "How did you handle the situation?",
       "keywords": ["conflict", "resolution", "communication"]
     },
