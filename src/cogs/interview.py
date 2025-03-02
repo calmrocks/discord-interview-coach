@@ -1,3 +1,5 @@
+
+import asyncio
 from discord.ext import commands
 import discord
 from typing import Dict, Optional
@@ -13,6 +15,7 @@ class InterviewSession:
         self.current_question = None
         self.status = "selecting_difficulty"  # possible states: "selecting_difficulty", "waiting_for_answer", "completed"
         self.start_time = discord.utils.utcnow()
+        self.is_processing = False
 
 class Interview(commands.Cog):
     def __init__(self, bot):
@@ -22,6 +25,50 @@ class Interview(commands.Cog):
         self.embed_builder = EmbedBuilder()
         self.question_provider = QuestionProvider()
         self.llm_provider = LLMProvider()
+
+    async def evaluate_response_async(self, question: str, response: str):
+        """Async wrapper for LLM evaluation"""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self.llm_provider.evaluate_response,
+            question,
+            response
+        )
+
+    async def generate_summary_async(self, interview_type: str, level: str, qa_pairs: list):
+        """Async wrapper for summary generation"""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self.llm_provider.generate_interview_summary,
+            interview_type,
+            level,
+            qa_pairs
+        )
+
+    @commands.command(name='active_interviews')
+    async def check_active_interviews(self, ctx):
+        """Check currently active interview sessions"""
+        if not self.active_sessions:
+            await ctx.send("No active interview sessions.")
+            return
+
+        embed = discord.Embed(
+            title="Active Interview Sessions",
+            color=discord.Color.blue()
+        )
+
+        for user_id, session in self.active_sessions.items():
+            user = self.bot.get_user(user_id)
+            status = "🔄 Processing" if session.is_processing else "⏳ Waiting for response"
+            embed.add_field(
+                name=f"User: {user.name}",
+                value=f"Type: {session.interview_type}\nDifficulty: {session.difficulty}\nStatus: {status}",
+                inline=False
+            )
+
+        await ctx.send(embed=embed)
 
     @commands.command(name='interview')
     async def start_interview(self, ctx):
@@ -174,74 +221,89 @@ class Interview(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Handle user answers during interview"""
-        # Ignore messages from bots or non-DM channels
         if message.author.bot or not isinstance(message.channel, discord.DMChannel):
             return
 
-        # Check if user has an active session waiting for answer
         if message.author.id in self.active_sessions:
             session = self.active_sessions[message.author.id]
 
+            # Check if already processing
+            if session.is_processing:
+                await message.channel.send("Still processing your previous response. Please wait...")
+                return
+
             if session.status == "waiting_for_answer":
-                # Process the answer
-                async with message.channel.typing():
-                    try:
-                        # Evaluate the response using LLM
-                        needs_followup, followup_question = self.llm_provider.evaluate_response(
-                            session.current_question["question"],
-                            message.content
-                        )
+                session.is_processing = True  # Set processing flag
 
-                        # Generate interview summary
-                        summary = self.llm_provider.generate_interview_summary(
-                            session.interview_type,
-                            session.difficulty,
-                            [{
-                                "question": session.current_question["question"],
-                                "answer": message.content
-                            }]
-                        )
+                # Send acknowledgment
+                await message.channel.send("Processing your response... This may take a minute...")
 
-                        # Create and send feedback embed
-                        feedback_embed = discord.Embed(
-                            title="Interview Feedback",
-                            description=summary["overall_assessment"],
-                            color=discord.Color.green() if summary["meets_bar"] else discord.Color.orange()
-                        )
+                try:
+                    # Process response in background task
+                    self.bot.loop.create_task(
+                        self.process_interview_response(message, session)
+                    )
+                except Exception as e:
+                    session.is_processing = False
+                    logger.error(f"Error starting response processing: {e}")
+                    await message.channel.send("An error occurred. Please try again.")
+    async def process_interview_response(self, message, session):
+        """Process interview response asynchronously"""
+        try:
+            # Evaluate response
+            needs_followup, followup_question = await self.evaluate_response_async(
+                session.current_question["question"],
+                message.content
+            )
 
-                        if summary["strengths"]:
-                            feedback_embed.add_field(
-                                name="💪 Strengths",
-                                value="\n".join(f"• {s}" for s in summary["strengths"]),
-                                inline=False
-                            )
+            # Generate summary
+            summary = await self.generate_summary_async(
+                session.interview_type,
+                session.difficulty,
+                [{
+                    "question": session.current_question["question"],
+                    "answer": message.content
+                }]
+            )
 
-                        if summary["improvement_areas"]:
-                            feedback_embed.add_field(
-                                name="🎯 Areas for Improvement",
-                                value="\n".join(f"• {i}" for i in summary["improvement_areas"]),
-                                inline=False
-                            )
+            # Create and send feedback embed
+            feedback_embed = discord.Embed(
+                title="Interview Feedback",
+                description=summary["overall_assessment"],
+                color=discord.Color.green() if summary["meets_bar"] else discord.Color.orange()
+            )
 
-                        await message.channel.send(embed=feedback_embed)
+            if summary["strengths"]:
+                feedback_embed.add_field(
+                    name="💪 Strengths",
+                    value="\n".join(f"• {s}" for s in summary["strengths"]),
+                    inline=False
+                )
 
-                        # Send closing message
-                        closing_embed = discord.Embed(
-                            title="Interview Complete",
-                            description="Thank you for participating! Use `!interview` to start another session.",
-                            color=discord.Color.blue()
-                        )
-                        await message.channel.send(embed=closing_embed)
+            if summary["improvement_areas"]:
+                feedback_embed.add_field(
+                    name="🎯 Areas for Improvement",
+                    value="\n".join(f"• {i}" for i in summary["improvement_areas"]),
+                    inline=False
+                )
 
-                        # Clean up session
-                        session.status = "completed"
-                        del self.active_sessions[message.author.id]
+            await message.channel.send(embed=feedback_embed)
 
-                    except Exception as e:
-                        await message.channel.send(f"Error evaluating answer: {str(e)}")
-                        session.status = "completed"
-                        del self.active_sessions[message.author.id]
+            # Send closing message
+            closing_embed = discord.Embed(
+                title="Interview Complete",
+                description="Thank you for participating! Use `!interview` to start another session.",
+                color=discord.Color.blue()
+            )
+            await message.channel.send(embed=closing_embed)
+
+        except Exception as e:
+            await message.channel.send(f"Error processing response: {str(e)}")
+        finally:
+            # Always clean up
+            session.is_processing = False
+            session.status = "completed"
+            del self.active_sessions[message.author.id]
 
 async def setup(bot):
     await bot.add_cog(Interview(bot))
