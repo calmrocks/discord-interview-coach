@@ -1,15 +1,16 @@
 from discord.ext import commands
 import discord
 from typing import Dict, Optional
-from .embed_builder import EmbedBuilder  # Adjust import path as needed
+from .embed_builder import EmbedBuilder
+from ..providers.question_provider import QuestionProvider
+from ..providers.llm_provider import LLMProvider
 
 class InterviewSession:
     def __init__(self, user_id: int, interview_type: str):
         self.user_id = user_id
         self.interview_type = interview_type
-        self.current_question = 0
-        self.answers = []
-        self.status = "active"
+        self.current_question = None
+        self.status = "active"  # possible states: "active", "waiting_for_answer", "completed"
         self.start_time = discord.utils.utcnow()
 
 class Interview(commands.Cog):
@@ -18,7 +19,8 @@ class Interview(commands.Cog):
         self.active_sessions: Dict[int, InterviewSession] = {}
         self.pending_selection: Dict[int, discord.Message] = {}
         self.embed_builder = EmbedBuilder()
-        self.current_questions = {}
+        self.question_provider = QuestionProvider()
+        self.llm_provider = LLMProvider()
 
     @commands.command(name='interview')
     async def start_interview(self, ctx):
@@ -48,9 +50,6 @@ class Interview(commands.Cog):
             selection_msg = await ctx.author.send(embed=embed)
             self.pending_selection[ctx.author.id] = selection_msg
 
-            # Debug print
-            print(f"Stored selection message ID: {selection_msg.id} for user {ctx.author.id}")
-
             # Add reaction options
             reactions = ['💻', '👥', '📊']
             for reaction in reactions:
@@ -61,31 +60,16 @@ class Interview(commands.Cog):
                 f"{ctx.author.mention} I couldn't send you a DM. "
                 "Please enable DMs from server members and try again!"
             )
-            
+
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         """Handle interview type selection"""
-        # Debug print
-        print(f"Reaction detected: {reaction.emoji} from user: {user.name}")
-
-        # Ignore bot's own reactions
         if user.bot:
             return
 
-        # Debug print
-        print(f"Pending selections: {self.pending_selection}")
-        print(f"User ID in pending: {user.id in self.pending_selection}")
-
-        # Check if this is a pending selection message
         if user.id in self.pending_selection:
             selection_msg = self.pending_selection[user.id]
-
-            # Debug print
-            print(f"Selection msg ID: {selection_msg.id}")
-            print(f"Reaction msg ID: {reaction.message.id}")
-
             if reaction.message.id == selection_msg.id:
-                # Map reactions to interview types
                 reaction_types = {
                     '💻': 'technical',
                     '👥': 'behavioral',
@@ -95,49 +79,124 @@ class Interview(commands.Cog):
                 if str(reaction.emoji) in reaction_types:
                     interview_type = reaction_types[str(reaction.emoji)]
 
-                    # Debug print
-                    print(f"Selected interview type: {interview_type}")
-
                     # Create new interview session
-                    self.active_sessions[user.id] = InterviewSession(
-                        user_id=user.id,
-                        interview_type=interview_type
-                    )
+                    session = InterviewSession(user.id, interview_type)
+                    self.active_sessions[user.id] = session
 
                     # Clean up pending selection
                     del self.pending_selection[user.id]
 
-                    # Send confirmation and instructions
-                    await self.send_interview_start_message(user, interview_type)
+                    # Start the interview immediately
+                    await self.start_interview_question(user)
 
-    async def send_interview_start_message(self, user: discord.User, interview_type: str):
-        """Send the interview start message and instructions"""
-        type_names = {
-            'technical': 'Technical Interview',
-            'behavioral': 'Behavioral Interview',
-            'system_design': 'System Design Interview'
-        }
+    async def start_interview_question(self, user: discord.User):
+        """Send the first question to the user"""
+        session = self.active_sessions[user.id]
 
-        embed = discord.Embed(
-            title=f"Starting {type_names[interview_type]}",
-            description="Great choice! Let's begin your interview practice.",
-            color=discord.Color.green()
-        )
+        try:
+            # Get a random question
+            question_data = self.question_provider.get_random_question(
+                session.interview_type,
+                "medium"
+            )
 
-        embed.add_field(
-            name="Instructions",
-            value=(
-                "• Take your time to think before answering\n"
-                "• Type your answers as you would speak them\n"
-                "• Use `!next` for the next question\n"
-                "• Use `!end` to end the interview\n"
-                "• Use `!pause` to pause the interview"
-            ),
-            inline=False
-        )
+            # Store the current question
+            session.current_question = question_data
+            session.status = "waiting_for_answer"
 
-        await user.send(embed=embed)
-        await user.send("Ready to start? Type `!next` for your first question!")
+            # Create and send question embed
+            embed = discord.Embed(
+                title="Interview Question",
+                description=question_data["question"],
+                color=discord.Color.blue()
+            )
+
+            if "context" in question_data:
+                embed.add_field(name="Context", value=question_data["context"], inline=False)
+
+            embed.add_field(
+                name="Instructions",
+                value="Type your answer when you're ready. Take your time to think it through!",
+                inline=False
+            )
+
+            await user.send(embed=embed)
+
+        except Exception as e:
+            await user.send(f"Error getting question: {str(e)}")
+            session.status = "completed"
+            del self.active_sessions[user.id]
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Handle user answers during interview"""
+        # Ignore messages from bots or non-DM channels
+        if message.author.bot or not isinstance(message.channel, discord.DMChannel):
+            return
+
+        # Check if user has an active session waiting for answer
+        if message.author.id in self.active_sessions:
+            session = self.active_sessions[message.author.id]
+
+            if session.status == "waiting_for_answer":
+                # Process the answer
+                async with message.channel.typing():
+                    try:
+                        # Evaluate the response using LLM
+                        needs_followup, followup_question = self.llm_provider.evaluate_response(
+                            session.current_question["question"],
+                            message.content
+                        )
+
+                        # Generate interview summary
+                        summary = self.llm_provider.generate_interview_summary(
+                            session.interview_type,
+                            "medium",
+                            [{
+                                "question": session.current_question["question"],
+                                "answer": message.content
+                            }]
+                        )
+
+                        # Create and send feedback embed
+                        feedback_embed = discord.Embed(
+                            title="Interview Feedback",
+                            description=summary["overall_assessment"],
+                            color=discord.Color.green() if summary["meets_bar"] else discord.Color.orange()
+                        )
+
+                        if summary["strengths"]:
+                            feedback_embed.add_field(
+                                name="💪 Strengths",
+                                value="\n".join(f"• {s}" for s in summary["strengths"]),
+                                inline=False
+                            )
+
+                        if summary["improvement_areas"]:
+                            feedback_embed.add_field(
+                                name="🎯 Areas for Improvement",
+                                value="\n".join(f"• {i}" for i in summary["improvement_areas"]),
+                                inline=False
+                            )
+
+                        await message.channel.send(embed=feedback_embed)
+
+                        # Send closing message
+                        closing_embed = discord.Embed(
+                            title="Interview Complete",
+                            description="Thank you for participating! Use `!interview` to start another session.",
+                            color=discord.Color.blue()
+                        )
+                        await message.channel.send(embed=closing_embed)
+
+                        # Clean up session
+                        session.status = "completed"
+                        del self.active_sessions[message.author.id]
+
+                    except Exception as e:
+                        await message.channel.send(f"Error evaluating answer: {str(e)}")
+                        session.status = "completed"
+                        del self.active_sessions[message.author.id]
 
 async def setup(bot):
     await bot.add_cog(Interview(bot))

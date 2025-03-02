@@ -19,6 +19,7 @@ class LLMProvider:
     def __init__(self):
         """Initialize the LLM provider with AWS Bedrock client and prompt manager."""
         self.prompt_manager = PromptManager()
+        print("PromptManager initialized successfully")
 
         # Initialize AWS Bedrock client
         self.bedrock_runtime = boto3.client(
