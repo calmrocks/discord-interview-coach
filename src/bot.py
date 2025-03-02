@@ -7,6 +7,7 @@ class InterviewCoach(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+        intents.reactions = True
 
         super().__init__(
             command_prefix=config.COMMAND_PREFIX,
