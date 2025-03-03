@@ -79,14 +79,16 @@ class InterviewService:
             # Store the Q&A pair
             qa_pair = {
                 "question": session.current_question["question"],
-                "answer": response,
-                "follow_ups": []
+                "answer": response
             }
             session.qa_history.append(qa_pair)
 
             # Evaluate response
             logger.debug(f"Evaluating response for user {user_id}")
             needs_followup, followup_question = await self._evaluate_response_async(
+                session.interview_type,
+                session.difficulty,
+                session.qa_history,
                 session.current_question["question"],
                 response
             )
@@ -98,10 +100,6 @@ class InterviewService:
             if should_continue:
                 session.follow_up_count += 1
                 session.current_question = {"question": followup_question}
-                qa_pair["follow_ups"].append({
-                    "question": followup_question,
-                    "answer": None
-                })
                 logger.debug(f"Returning follow-up question: {followup_question}")
                 return {"type": "follow_up", "question": followup_question}, True
 
@@ -122,14 +120,17 @@ class InterviewService:
         finally:
             session.is_processing = False
 
-    async def _evaluate_response_async(self, question: str, response: str) -> Tuple[bool, Optional[str]]:
+    async def _evaluate_response_async(self, interview_type: str, level: str, qa_history: List[Dict[str, str]], current_question: str, current_response: str) -> Tuple[bool, Optional[str]]:
         """Async wrapper for LLM evaluation"""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             self.llm_provider.evaluate_response,
-            question,
-            response
+            interview_type,
+            level,
+            qa_history,
+            current_question,
+            current_response
         )
 
     async def _generate_summary_async(self, interview_type: str, level: str, qa_history: List[dict]):

@@ -84,14 +84,19 @@ class LLMProvider:
             logger.error(f"Error invoking Bedrock model: {e}", exc_info=True)
             raise Exception(f"Failed to invoke LLM: {str(e)}")
 
-    def evaluate_response(self, question: str, response: str) -> Tuple[bool, Optional[str]]:
+    def evaluate_response(self, interview_type: str, level: str, question_history: List[Dict[str, str]], current_question: str, current_response: str) -> Tuple[bool, Optional[str]]:
         """
         Evaluate a candidate's response to determine if a follow-up is needed.
         """
+        history_prompt = self._format_question_history(question_history)
+
         prompt = self.prompt_manager.format_prompt(
             "evaluation",
-            question=question,
-            response=response
+            interview_type=interview_type,
+            level=level,
+            question_history=history_prompt,
+            current_question=current_question,
+            current_response=current_response
         )
 
         logger.debug(f"Evaluation prompt: {prompt}")
@@ -105,21 +110,25 @@ class LLMProvider:
             needs_followup = False
             followup_question = None
 
-            # Check if the LLM is recommending a follow-up question
-            if "ask a follow-up" in content.lower() or "follow-up question" in content.lower():
-                needs_followup = True
+            lines = content.split('\n')
+            for line in lines:
+                if line.lower().startswith("follow-up needed:"):
+                    needs_followup = "yes" in line.lower()
+                elif line.lower().startswith("follow-up question:"):
+                    followup_question = line.split(":", 1)[1].strip()
+                    break
 
-                # Extract the follow-up question from the content
-                lines = [line.strip() for line in content.split("\n") if line.strip()]
+            if needs_followup and not followup_question:
+                # If we couldn't extract a specific question but LLM wants a follow-up,
+                # look for any line with a question mark
                 for line in lines:
-                    if "?" in line and len(line) < 150:  # Simple heuristic for finding questions
-                        followup_question = line
+                    if "?" in line:
+                        followup_question = line.strip()
                         break
 
-                # If we couldn't extract a question but LLM wants a follow-up,
-                # use a default follow-up
-                if not followup_question:
-                    followup_question = "Can you elaborate more on your answer?"
+            # If still no follow-up question, use a default
+            if needs_followup and not followup_question:
+                followup_question = "Can you elaborate more on your last answer?"
 
             logger.debug(f"Evaluation result: needs_followup={needs_followup}, followup_question={followup_question}")
             return needs_followup, followup_question
@@ -127,6 +136,14 @@ class LLMProvider:
         except Exception as e:
             logger.error(f"Error evaluating response: {e}", exc_info=True)
             return False, None
+
+    def _format_question_history(self, question_history: List[Dict[str, str]]) -> str:
+        """Format the question history for the prompt."""
+        formatted_history = ""
+        for i, qa in enumerate(question_history, 1):
+            formatted_history += f"Q{i}: {qa['question']}\n"
+            formatted_history += f"A{i}: {qa['answer']}\n\n"
+        return formatted_history.strip()
 
     def generate_interview_summary(self, interview_type: str, level: str,
                                    questions_and_responses: List[Dict[str, Any]]) -> Dict[str, Any]:
