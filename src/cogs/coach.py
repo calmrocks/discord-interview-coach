@@ -13,7 +13,8 @@ class InterviewCoach(commands.Cog):
     async def interview_coach(self, ctx, *, question: str):
         """
         Ask the interview coach for guidance on interview-related questions.
-        Usage: !coach How should I prepare for a behavioral interview?
+        Usage: !coach <your question>
+        Example: !coach How should I answer "What's your greatest weakness?"
         """
         await ctx.send("Consulting the interview coach. Please wait...")
 

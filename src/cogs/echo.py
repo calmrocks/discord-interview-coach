@@ -1,6 +1,6 @@
 from discord.ext import commands
 
-class Utils(commands.Cog):
+class Echo(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -10,4 +10,4 @@ class Utils(commands.Cog):
         await ctx.send(f"You said: {message}")
 
 async def setup(bot):
-    await bot.add_cog(Utils(bot))
+    await bot.add_cog(Echo(bot))

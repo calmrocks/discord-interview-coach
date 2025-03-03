@@ -1,7 +1,7 @@
 from discord.ext import commands
 import logging
 import discord
-from .embed_builder import EmbedBuilder
+from src.utils.embed_builder import EmbedBuilder
 from ..services.interview_service import InterviewService
 
 
@@ -17,7 +17,11 @@ class Interview(commands.Cog):
 
     @commands.command(name='interview')
     async def start_interview(self, ctx):
-        """Start a new interview session"""
+        """
+        Start a mock interview session.
+        Usage: !interview
+        The bot will guide you through selecting an interview type and difficulty.
+        """
         if self.interview_service.get_session(ctx.author.id):
             await ctx.send("You already have an active interview session!")
             return
