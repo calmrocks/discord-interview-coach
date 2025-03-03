@@ -1,24 +1,10 @@
 {
   "evaluation": {
-    "template": "You are evaluating a candidate's response to an interview question. The question is: '{question}'. The candidate's response is: '{response}'. Based on this response, determine if a follow-up question is needed. Consider: 1) Did they answer the question completely? 2) Are there areas that need clarification? 3) Would probing deeper reveal more insights?\n\nDecide whether to: A) Ask a follow-up question, or B) Conclude this question.\n\nIf follow-up is needed, provide a specific follow-up question that would help evaluate the candidate better.",
-    "parameters": [
-      "question",
-      "response"
-    ]
-  },
-  "follow_up": {
-    "template": "Based on the candidate's response '{response}' to the follow-up question '{follow_up}', generate the next logical follow-up question to dig deeper into their experience or test their knowledge further.",
-    "parameters": [
-      "response",
-      "follow_up"
-    ]
+    "template": "You are an interviewer. Evaluate the following response to the question and determine if a follow-up question is needed.\n\nQuestion: {question}\n\nResponse: {response}\n\nShould I ask a follow-up question? If yes, what follow-up question should I ask? If no, explain why not.",
+    "parameters": ["question", "response"]
   },
   "summary": {
-    "template": "Create a comprehensive interview summary for a {interview_type} interview at {level} level. The candidate was asked the following questions:\n\n{questions_and_responses}\n\nBased on these interactions, please provide:\n1. Overall assessment (Did they meet the bar for this level?)\n2. Strengths demonstrated\n3. Areas for improvement\n4. Specific examples from their responses that support your assessment",
-    "parameters": [
-      "interview_type",
-      "level",
-      "questions_and_responses"
-    ]
+    "template": "Generate a comprehensive summary of a {interview_type} interview for a {level} level candidate.\n\nInterview details:\n{questions_and_responses}\n\nPlease provide:\n1. Overall assessment\n2. Strengths (bullet points)\n3. Areas for improvement (bullet points)\n4. Specific examples from the interview\n5. Whether the candidate meets the bar (yes/no)",
+    "parameters": ["interview_type", "level", "questions_and_responses"]
   }
 }

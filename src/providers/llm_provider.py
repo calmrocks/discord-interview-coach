@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from .prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class LLMProvider:
     """
@@ -19,7 +20,7 @@ class LLMProvider:
     def __init__(self):
         """Initialize the LLM provider with AWS Bedrock client and prompt manager."""
         self.prompt_manager = PromptManager()
-        print("PromptManager initialized successfully")
+        logger.info("PromptManager initialized successfully")
 
         # Initialize AWS Bedrock client
         self.bedrock_runtime = boto3.client(
@@ -27,86 +28,65 @@ class LLMProvider:
         )
 
         # Default model configuration
-        self.default_model_id = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-v2')
+        self.default_model_id = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-instant-1.2')
         self.max_tokens = int(os.getenv('LLM_MAX_TOKENS', 1000))
         self.temperature = float(os.getenv('LLM_TEMPERATURE', 0.7))
+
+        logger.info(f"Using model: {self.default_model_id}, max_tokens: {self.max_tokens}, temperature: {self.temperature}")
 
     def _invoke_model(self, prompt: str, model_id: Optional[str] = None,
                       max_tokens: Optional[int] = None,
                       temperature: Optional[float] = None) -> Dict[str, Any]:
         """
         Send a request to the LLM model and return the response.
-
-        Args:
-            prompt: The formatted prompt to send to the model
-            model_id: Override the default model ID
-            max_tokens: Override the default max tokens
-            temperature: Override the default temperature
-
-        Returns:
-            Parsed response from the model
-
-        Raises:
-            Exception: If the model invocation fails
         """
         model_id = model_id or self.default_model_id
         max_tokens = max_tokens or self.max_tokens
         temperature = temperature or self.temperature
 
-        # Configure the request based on the model type
-        if "anthropic.claude" in model_id:
-            # Claude-specific formatting
-            body = json.dumps({
-                "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
-                "max_tokens_to_sample": max_tokens,
-                "temperature": temperature
-            })
-        elif "amazon.titan" in model_id:
-            # Titan-specific formatting
-            body = json.dumps({
-                "inputText": prompt,
-                "textGenerationConfig": {
-                    "maxTokenCount": max_tokens,
-                    "temperature": temperature,
-                }
-            })
-        else:
-            # Generic formatting for other models
-            body = json.dumps({
-                "prompt": prompt,
-                "max_tokens": max_tokens,
-                "temperature": temperature
-            })
+        logger.debug(f"Invoking model with prompt: {prompt}")
+        logger.debug(f"Model ID: {model_id}, Max Tokens: {max_tokens}, Temperature: {temperature}")
 
         try:
+            # Configure the request based on the model type
+            if "anthropic.claude" in model_id:
+                body = json.dumps({
+                    "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
+                    "max_tokens_to_sample": max_tokens,
+                    "temperature": temperature,
+                    "anthropic_version": "bedrock-2023-05-31"
+                })
+            else:
+                raise ValueError(f"Unsupported model: {model_id}")
+
+            logger.debug(f"Request body: {body}")
+
             response = self.bedrock_runtime.invoke_model(
                 modelId=model_id,
                 body=body
             )
+
+            logger.debug(f"Raw response from Bedrock: {response}")
+
+            # Read the response body
             response_body = json.loads(response.get('body').read())
+            logger.debug(f"Parsed response body: {response_body}")
 
             # Parse response based on model type
             if "anthropic.claude" in model_id:
-                return {"content": response_body.get('completion', '')}
-            elif "amazon.titan" in model_id:
-                return {"content": response_body.get('results', [{}])[0].get('outputText', '')}
+                content = response_body.get('completion', '')
+                logger.debug(f"Extracted content: {content}")
+                return {"content": content}
             else:
-                return {"content": response_body.get('generated_text', '')}
+                return {"content": "Unsupported model response"}
 
-        except ClientError as e:
-            logger.error(f"Error invoking Bedrock model: {e}")
+        except Exception as e:
+            logger.error(f"Error invoking Bedrock model: {e}", exc_info=True)
             raise Exception(f"Failed to invoke LLM: {str(e)}")
 
     def evaluate_response(self, question: str, response: str) -> Tuple[bool, Optional[str]]:
         """
         Evaluate a candidate's response to determine if a follow-up is needed.
-
-        Args:
-            question: The interview question that was asked
-            response: The candidate's response
-
-        Returns:
-            Tuple of (needs_followup, followup_question)
         """
         prompt = self.prompt_manager.format_prompt(
             "evaluation",
@@ -114,60 +94,39 @@ class LLMProvider:
             response=response
         )
 
-        result = self._invoke_model(prompt)
-        content = result.get("content", "").strip()
+        logger.debug(f"Evaluation prompt: {prompt}")
 
-        # Parse the LLM's decision from its response
-        needs_followup = False
-        followup_question = None
+        try:
+            result = self._invoke_model(prompt)
+            content = result.get("content", "").strip()
+            logger.debug(f"LLM response for evaluation: {content}")
 
-        # Check if the LLM is recommending a follow-up question
-        if "ask a follow-up" in content.lower() or "follow-up question" in content.lower():
-            needs_followup = True
+            # Parse the LLM's decision from its response
+            needs_followup = False
+            followup_question = None
 
-            # Extract the follow-up question from the content
-            # This is a simple extraction method - might need improvement
-            lines = [line.strip() for line in content.split("\n") if line.strip()]
-            for line in lines:
-                if "?" in line and len(line) < 150:  # Simple heuristic for finding questions
-                    followup_question = line
-                    break
+            # Check if the LLM is recommending a follow-up question
+            if "ask a follow-up" in content.lower() or "follow-up question" in content.lower():
+                needs_followup = True
 
-            # If we couldn't extract a question but LLM wants a follow-up,
-            # use the default follow-up from the question
-            if not followup_question:
-                followup_question = "Can you elaborate more on your answer?"
+                # Extract the follow-up question from the content
+                lines = [line.strip() for line in content.split("\n") if line.strip()]
+                for line in lines:
+                    if "?" in line and len(line) < 150:  # Simple heuristic for finding questions
+                        followup_question = line
+                        break
 
-        return needs_followup, followup_question
+                # If we couldn't extract a question but LLM wants a follow-up,
+                # use a default follow-up
+                if not followup_question:
+                    followup_question = "Can you elaborate more on your answer?"
 
-    def generate_followup(self, response: str, previous_followup: str) -> str:
-        """
-        Generate a follow-up question based on a candidate's response.
+            logger.debug(f"Evaluation result: needs_followup={needs_followup}, followup_question={followup_question}")
+            return needs_followup, followup_question
 
-        Args:
-            response: The candidate's latest response
-            previous_followup: The previous follow-up question asked
-
-        Returns:
-            A new follow-up question
-        """
-        prompt = self.prompt_manager.format_prompt(
-            "follow_up",
-            response=response,
-            follow_up=previous_followup
-        )
-
-        result = self._invoke_model(prompt)
-        content = result.get("content", "").strip()
-
-        # Extract the question from the content (may need refinement)
-        lines = [line.strip() for line in content.split("\n") if line.strip()]
-        for line in lines:
-            if "?" in line:
-                return line
-
-        # Fallback
-        return content
+        except Exception as e:
+            logger.error(f"Error evaluating response: {e}", exc_info=True)
+            return False, None
 
     def generate_interview_summary(self, interview_type: str, level: str,
                                    questions_and_responses: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -200,11 +159,14 @@ class LLMProvider:
             questions_and_responses=formatted_qa
         )
 
+        logger.debug(f"Summary generation prompt: {prompt}")
+
         result = self._invoke_model(
             prompt,
             max_tokens=1500  # Increase token limit for comprehensive summary
         )
         content = result.get("content", "").strip()
+        logger.debug(f"LLM response for summary: {content}")
 
         # Parse the summary into sections
         sections = {
@@ -255,4 +217,5 @@ class LLMProvider:
         # Determine if candidate meets the bar
         sections["meets_bar"] = "meet" in sections["overall_assessment"].lower() and "bar" in sections["overall_assessment"].lower() and not ("not meet" in sections["overall_assessment"].lower() or "doesn't meet" in sections["overall_assessment"].lower() or "does not meet" in sections["overall_assessment"].lower())
 
+        logger.debug(f"Parsed summary sections: {sections}")
         return sections
