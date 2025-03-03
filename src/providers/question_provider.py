@@ -40,9 +40,23 @@ class QuestionProvider:
             raise ValueError(f"Invalid question type: {question_type}")
 
         eligible_questions = [q for q in self.questions[question_type]
-                              if q["difficulty"] == difficulty]
+                              if difficulty in q.get("difficulties", [difficulty])]
 
         if not eligible_questions:
             raise ValueError(f"No questions found for {question_type} at {difficulty} level")
 
         return random.choice(eligible_questions)
+
+    def get_questions_by_category(self, question_type: str, category: str) -> List[Dict[str, Any]]:
+        """Get questions of a specific type and category"""
+        if question_type not in self.questions:
+            raise ValueError(f"Invalid question type: {question_type}")
+
+        return [q for q in self.questions[question_type] if category in q.get("categories", [category])]
+
+    def get_questions_by_difficulty(self, question_type: str, difficulty: str) -> List[Dict[str, Any]]:
+        """Get questions of a specific type and difficulty"""
+        if question_type not in self.questions:
+            raise ValueError(f"Invalid question type: {question_type}")
+
+        return [q for q in self.questions[question_type] if difficulty in q.get("difficulties", [difficulty])]

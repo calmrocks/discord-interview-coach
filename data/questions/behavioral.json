@@ -8,25 +8,22 @@
     {
       "id": "b1",
       "question": "Tell me about a time you faced a challenging situation at work.",
-      "category": "problem_solving",
-      "difficulty": "entry",
-      "follow_up": "What did you learn from this experience?",
+      "category": ["problem_solving", "adaptability"],
+      "difficulty": ["entry", "medium", "senior"],
       "keywords": ["challenge", "resolution", "learning"]
     },
     {
       "id": "b2",
       "question": "Describe a situation where you had to work with a difficult team member.",
-      "category": "teamwork",
-      "difficulty": "medium",
-      "follow_up": "How did you handle the situation?",
+      "category": ["teamwork", "conflict_resolution"],
+      "difficulty": ["entry", "medium", "senior"],
       "keywords": ["conflict", "resolution", "communication"]
     },
     {
       "id": "b3",
       "question": "Tell me about a time you had to make a difficult decision with limited information.",
-      "category": "decision_making",
-      "difficulty": "senior",
-      "follow_up": "What was the outcome and what would you do differently?",
+      "category": ["decision_making", "problem_solving", "adaptability"],
+      "difficulty": ["entry", "medium", "senior"],
       "keywords": ["decision", "uncertainty", "outcome"]
     }
   ]
