@@ -228,3 +228,13 @@ class LLMProvider:
 
         logger.debug(f"Parsed summary sections: {sections}")
         return sections
+
+    def generate_coach_response(self, prompt: str) -> str:
+        try:
+            result = self._invoke_model(prompt, max_tokens=800)  # Adjust max_tokens as needed
+            content = result.get("content", "").strip()
+            return content
+        except Exception as e:
+            logger.error(f"Error generating coach response: {e}", exc_info=True)
+            raise Exception(f"Failed to generate coach response: {str(e)}")
+

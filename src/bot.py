@@ -16,7 +16,7 @@ class InterviewCoach(commands.Bot):
         )
 
     async def setup_hook(self):
-        for cog in ['cogs.utils', 'cogs.interview']:
+        for cog in ['cogs.utils', 'cogs.interview', 'cogs.interview_coach']:
             try:
                 await self.load_extension(f'src.{cog}')
                 print(f'Successfully loaded {cog}')
