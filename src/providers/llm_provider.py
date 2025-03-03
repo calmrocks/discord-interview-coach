@@ -191,48 +191,40 @@ class LLMProvider:
             "strengths": [],
             "improvement_areas": [],
             "examples": [],
-            "meets_bar": False
+            "meets_bar": "",
+            "additional_comments": ""
         }
 
-        # Simple parsing logic - in production you might want more robust parsing
         current_section = None
         for line in content.split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            # Try to identify sections based on keywords
             lower_line = line.lower()
-            if "overall assessment" in lower_line or "assessment" in lower_line:
+            if "overall assessment" in lower_line:
                 current_section = "overall_assessment"
                 sections[current_section] = ""
-                continue
-            elif "strength" in lower_line or "positive" in lower_line:
+            elif "strengths" in lower_line:
                 current_section = "strengths"
-                continue
-            elif "improvement" in lower_line or "area" in lower_line and "improvement" in lower_line:
+            elif "areas for improvement" in lower_line:
                 current_section = "improvement_areas"
-                continue
-            elif "example" in lower_line or "specific" in lower_line:
+            elif "key examples" in lower_line:
                 current_section = "examples"
-                continue
-
-            # Add content to the current section
-            if current_section == "overall_assessment":
-                sections[current_section] += line + " "
-            elif current_section in ["strengths", "improvement_areas", "examples"]:
-                # Handle bullet points
-                if line.startswith("- "):
-                    line = line[2:]
-                elif line.startswith("• "):
-                    line = line[2:]
-                elif line[0].isdigit() and line[1:3] in (". ", ") "):
-                    line = line[3:]
-
-                sections[current_section].append(line)
-
-        # Determine if candidate meets the bar
-        sections["meets_bar"] = "meet" in sections["overall_assessment"].lower() and "bar" in sections["overall_assessment"].lower() and not ("not meet" in sections["overall_assessment"].lower() or "doesn't meet" in sections["overall_assessment"].lower() or "does not meet" in sections["overall_assessment"].lower())
+            elif "final decision" in lower_line:
+                current_section = "meets_bar"
+                sections[current_section] = line.split(":", 1)[1].strip() if ":" in line else line
+            elif "additional comments" in lower_line:
+                current_section = "additional_comments"
+                sections[current_section] = ""
+            elif current_section:
+                if current_section == "overall_assessment":
+                    sections[current_section] += line + " "
+                elif current_section in ["strengths", "improvement_areas", "examples"]:
+                    if line.startswith("-") or line[0].isdigit():
+                        sections[current_section].append(line.lstrip("- ").strip())
+                elif current_section == "additional_comments":
+                    sections[current_section] += line + " "
 
         logger.debug(f"Parsed summary sections: {sections}")
         return sections

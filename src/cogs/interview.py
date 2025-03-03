@@ -150,7 +150,8 @@ class Interview(commands.Cog):
                 else:
                     # Send summary and end interview
                     if isinstance(result, dict) and 'content' in result:
-                        summary_embed = self.embed_builder.create_summary_embed(result['content'])
+                        summary = result['content']
+                        summary_embed = self.create_summary_embed(summary)
                         await message.channel.send(embed=summary_embed)
                     else:
                         logger.error(f"Unexpected result format for summary: {result}")
@@ -172,6 +173,36 @@ class Interview(commands.Cog):
 
         embed = self.embed_builder.create_active_sessions_embed(active_sessions)
         await ctx.send(embed=embed)
+
+    def create_summary_embed(self, summary):
+        embed = discord.Embed(title="Interview Summary", color=discord.Color.blue())
+
+        # Overall Assessment
+        embed.add_field(name="Overall Assessment", value=summary.get("overall_assessment", "N/A"), inline=False)
+
+        # Strengths
+        strengths = summary.get("strengths", [])
+        strengths_text = "\n".join(f"• {strength}" for strength in strengths) if strengths else "N/A"
+        embed.add_field(name="Strengths", value=strengths_text, inline=False)
+
+        # Areas for Improvement
+        improvements = summary.get("improvement_areas", [])
+        improvements_text = "\n".join(f"• {improvement}" for improvement in improvements) if improvements else "N/A"
+        embed.add_field(name="Areas for Improvement", value=improvements_text, inline=False)
+
+        # Key Examples
+        examples = summary.get("examples", [])
+        examples_text = "\n".join(f"{i+1}. {example}" for i, example in enumerate(examples)) if examples else "N/A"
+        embed.add_field(name="Key Examples", value=examples_text, inline=False)
+
+        # Final Decision
+        embed.add_field(name="Final Decision", value=summary.get("meets_bar", "N/A"), inline=False)
+
+        # Additional Comments
+        if "additional_comments" in summary:
+            embed.add_field(name="Additional Comments", value=summary["additional_comments"], inline=False)
+
+        return embed
 
 async def setup(bot):
     await bot.add_cog(Interview(bot))
