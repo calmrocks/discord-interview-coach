@@ -68,7 +68,7 @@ class EmbedBuilder:
         return embed
 
 
-    def create_resume_feedback_embed(self, feedback: dict) -> discord.Embed:
+    def create_resume_feedback_embed(self, feedback: dict, include_refined: bool = True) -> discord.Embed:
         """Create an embed for resume feedback"""
         embed = discord.Embed(
             title="Resume Analysis Results",
@@ -76,15 +76,20 @@ class EmbedBuilder:
         )
 
         # Overall Assessment
+        assessment = feedback.get("overall_assessment", "N/A")
+        if len(assessment) > 1024:
+            assessment = assessment[:1021] + "..."
         embed.add_field(
             name="Overall Assessment",
-            value=feedback.get("overall_assessment", "N/A"),
+            value=assessment,
             inline=False
         )
 
         # Strengths
         strengths = feedback.get("strengths", [])
         strengths_text = "\n".join(f"• {strength}" for strength in strengths) or "N/A"
+        if len(strengths_text) > 1024:
+            strengths_text = strengths_text[:1021] + "..."
         embed.add_field(
             name="Strengths",
             value=strengths_text,
@@ -94,25 +99,31 @@ class EmbedBuilder:
         # Improvements
         improvements = feedback.get("improvements", [])
         improvements_text = "\n".join(f"• {improvement}" for improvement in improvements) or "N/A"
+        if len(improvements_text) > 1024:
+            improvements_text = improvements_text[:1021] + "..."
         embed.add_field(
             name="Suggested Improvements",
             value=improvements_text,
             inline=False
         )
 
-        # Refined Resume
-        refined_content = feedback.get("refined_content", "").strip()
-        if len(refined_content) > 1024:
-            refined_content = refined_content[:1021] + "..."
-        embed.add_field(
-            name="Refined Resume",
-            value=refined_content or "N/A",
-            inline=False
-        )
+        # Refined Resume (optional)
+        if include_refined:
+            refined_content = feedback.get("refined_content", "").strip()
+            if refined_content:
+                if len(refined_content) > 1024:
+                    refined_content = refined_content[:1021] + "..."
+                embed.add_field(
+                    name="Refined Resume",
+                    value=refined_content or "N/A",
+                    inline=False
+                )
 
         # Additional Tips
         tips = feedback.get("additional_tips", [])
         tips_text = "\n".join(f"• {tip}" for tip in tips) or "N/A"
+        if len(tips_text) > 1024:
+            tips_text = tips_text[:1021] + "..."
         embed.add_field(
             name="Additional Tips",
             value=tips_text,
