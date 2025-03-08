@@ -11,6 +11,7 @@ class InterviewCoach(commands.Bot):
         intents.message_content = True
         intents.members = True
         intents.reactions = True
+        intents.presences = True
 
         super().__init__(
             command_prefix=config.COMMAND_PREFIX,
