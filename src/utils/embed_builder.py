@@ -66,3 +66,57 @@ class EmbedBuilder:
                 inline=False
             )
         return embed
+
+
+    def create_resume_feedback_embed(self, feedback: dict) -> discord.Embed:
+        """Create an embed for resume feedback"""
+        embed = discord.Embed(
+            title="Resume Analysis Results",
+            color=discord.Color.blue()
+        )
+
+        # Overall Assessment
+        embed.add_field(
+            name="Overall Assessment",
+            value=feedback.get("overall_assessment", "N/A"),
+            inline=False
+        )
+
+        # Strengths
+        strengths = feedback.get("strengths", [])
+        strengths_text = "\n".join(f"• {strength}" for strength in strengths) or "N/A"
+        embed.add_field(
+            name="Strengths",
+            value=strengths_text,
+            inline=False
+        )
+
+        # Improvements
+        improvements = feedback.get("improvements", [])
+        improvements_text = "\n".join(f"• {improvement}" for improvement in improvements) or "N/A"
+        embed.add_field(
+            name="Suggested Improvements",
+            value=improvements_text,
+            inline=False
+        )
+
+        # Refined Resume
+        refined_content = feedback.get("refined_content", "").strip()
+        if len(refined_content) > 1024:
+            refined_content = refined_content[:1021] + "..."
+        embed.add_field(
+            name="Refined Resume",
+            value=refined_content or "N/A",
+            inline=False
+        )
+
+        # Additional Tips
+        tips = feedback.get("additional_tips", [])
+        tips_text = "\n".join(f"• {tip}" for tip in tips) or "N/A"
+        embed.add_field(
+            name="Additional Tips",
+            value=tips_text,
+            inline=False
+        )
+
+        return embed

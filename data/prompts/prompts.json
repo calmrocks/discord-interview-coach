@@ -10,5 +10,9 @@
   "interview_coach": {
     "template": "As an experienced interview coach supporting a candidate, provide professional guidance for the following interview-related question. Your response should be informative, encouraging, and tailored to help the candidate succeed in their interview preparation or performance.\n\nCandidate's Question: {question}\n\nPlease structure your response with the following sections:\n1. Direct Answer: Provide a clear, concise answer to the question.\n2. Explanation: Offer more detailed information or context if necessary.\n3. Tips or Strategies: Give practical advice or techniques the candidate can use.\n4. Example (if applicable): Provide a brief example or scenario to illustrate your points.\n5. Encouragement: End with a motivational note to boost the candidate's confidence.\n\nRemember to maintain a professional yet supportive tone throughout your response.",
     "parameters": ["question"]
+  },
+  "resume_analysis": {
+    "template": "You are an experienced resume writer and career coach. Please analyze the following resume and provide comprehensive feedback and improvements:\n\n{resume_text}\n\nProvide your analysis in the following format:\n\nOverall Assessment:\n[Provide a brief overall assessment of the resume]\n\nStrengths:\n- [List key strengths of the resume]\n\nImprovements Needed:\n- [List specific areas for improvement]\n\nRefined Resume:\n[Provide an improved version of the resume with better wording and structure]\n\nAdditional Tips:\n- [Provide additional career-specific tips and recommendations]\n",
+    "parameters": ["resume_text"]
   }
 }

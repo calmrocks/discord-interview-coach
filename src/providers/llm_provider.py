@@ -238,3 +238,49 @@ class LLMProvider:
             logger.error(f"Error generating coach response: {e}", exc_info=True)
             raise Exception(f"Failed to generate coach response: {str(e)}")
 
+    def generate_resume_feedback(self, prompt: str) -> dict:
+        """Generate feedback for a resume"""
+        try:
+            result = self._invoke_model(prompt, max_tokens=1500)
+            content = result.get("content", "").strip()
+
+            # Parse the structured feedback
+            sections = {
+                "overall_assessment": "",
+                "strengths": [],
+                "improvements": [],
+                "refined_content": "",
+                "additional_tips": []
+            }
+
+            current_section = None
+            for line in content.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+
+                lower_line = line.lower()
+                if "overall assessment" in lower_line:
+                    current_section = "overall_assessment"
+                    sections[current_section] = ""
+                elif "strengths" in lower_line:
+                    current_section = "strengths"
+                elif "improvements" in lower_line:
+                    current_section = "improvements"
+                elif "refined resume" in lower_line:
+                    current_section = "refined_content"
+                    sections[current_section] = ""
+                elif "additional tips" in lower_line:
+                    current_section = "additional_tips"
+                elif current_section:
+                    if current_section in ["strengths", "improvements", "additional_tips"]:
+                        if line.startswith("-") or line[0].isdigit():
+                            sections[current_section].append(line.lstrip("- ").strip())
+                    else:
+                        sections[current_section] += line + "\n"
+
+            return sections
+
+        except Exception as e:
+            logger.error(f"Error generating resume feedback: {e}", exc_info=True)
+            raise Exception(f"Failed to generate resume feedback: {str(e)}")
