@@ -1,7 +1,11 @@
 import json
 import os
 import random
+import logging
 from typing import Dict, Any, List
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class QuestionProvider:
     def __init__(self, data_path="data/questions"):
@@ -13,23 +17,23 @@ class QuestionProvider:
         questions = {}
         for question_type in ["behavioral", "system_design", "technical"]:
             file_path = os.path.join(self.data_path, f"{question_type}.json")
-            print(f"Attempting to load questions from: {file_path}")  # Debug print
+            logger.debug(f"Attempting to load questions from: {file_path}")
             try:
                 if not os.path.exists(file_path):
-                    print(f"File does not exist: {file_path}")  # Debug print
+                    logger.debug(f"File does not exist: {file_path}")
                     continue
 
                 with open(file_path, 'r') as f:
                     content = f.read()
-                    print(f"Content of {file_path}:")  # Debug print
-                    print(content[:100])  # Print first 100 chars
+                    logger.debug(f"Content of {file_path}:")
+                    logger.debug(content[:100])
                     questions[question_type] = json.loads(content)["questions"]
 
             except json.JSONDecodeError as e:
-                print(f"JSON decode error in {file_path}: {str(e)}")
+                logger.error(f"JSON decode error in {file_path}: {str(e)}")
                 raise
             except Exception as e:
-                print(f"Error loading {file_path}: {str(e)}")
+                logger.error(f"Error loading {file_path}: {str(e)}")
                 raise
 
         return questions

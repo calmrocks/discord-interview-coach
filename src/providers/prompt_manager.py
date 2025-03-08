@@ -1,5 +1,9 @@
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class PromptManager:
     def __init__(self, prompt_file="data/prompts/prompts.json"):
@@ -7,11 +11,11 @@ class PromptManager:
         self.prompts = self._load_prompts()
 
     def _load_prompts(self):
-        print("Loading prompts from ", self.prompt_file)
+        logger.debug("Loading prompts from ", self.prompt_file)
         with open(self.prompt_file, 'r') as f:
             return json.load(f)
 
-        print("Loaded prompts")
+        logger.info("Loaded prompts")
 
     def format_prompt(self, prompt_type, **kwargs):
         """Format a prompt template with the provided parameters"""
