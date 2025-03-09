@@ -2,6 +2,8 @@ from discord.ext import commands, tasks
 from datetime import datetime, time
 import logging
 import pytz
+from zoneinfo import ZoneInfo
+from tzlocal import get_localzone
 import discord
 from ..config.task_config import TASK_CONFIG
 
@@ -10,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BaseScheduledTask:
     def __init__(self, bot):
         self.bot = bot
-        self.timezone = pytz.timezone('UTC')
+        self.timezone = get_localzone()
         self._last_run = None
         self.task_stats = {
             'runs': 0,
