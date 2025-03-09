@@ -17,11 +17,6 @@ class DailyTips(commands.Cog, BaseScheduledTask):
     def cog_unload(self):
         self.task_loop.cancel()
 
-    def should_run(self) -> bool:
-        now = datetime.now(self.timezone)
-        logger.info(f"Current time: {now}, Hour: {now.hour}, Minute: {now.minute}")
-        return now.hour == 10 and now.minute < 30
-
     async def execute(self):
         """Generate and send daily tech tip to all designated channels"""
         channel_ids = TASK_CONFIG['daily_tips']['channel_ids']

@@ -3,6 +3,7 @@ from datetime import datetime, time
 import logging
 import pytz
 import discord
+from ..config.task_config import TASK_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class BaseScheduledTask:
             'last_error': None,
             'last_success': None
         }
+        self.last_run = {}
 
         self._register_status_command()
 
@@ -60,8 +62,58 @@ class BaseScheduledTask:
         self.bot.add_command(status)
 
     def should_run(self) -> bool:
-        """Override this method to define when the task should run"""
-        raise NotImplementedError
+        """Common logic for determining if a task should run based on configuration"""
+        task_name = self.__class__.__name__.lower()
+        config = TASK_CONFIG.get(task_name, {})
+        if not config.get('enabled', False):
+            return False
+
+        schedule = config.get('schedule', {})
+        schedule_type = schedule.get('type')
+        hours = schedule.get('hours', [])
+        minute_window = schedule.get('minute_window', 60)
+        interval = schedule.get('interval', 0)
+
+        now = datetime.now(self.timezone)
+        current_hour = now.hour
+        current_minute = now.minute
+
+        # Check if enough time has passed since last run (for interval-based tasks)
+        if interval > 0:
+            last_run = self.last_run.get(task_name)
+            if last_run:
+                time_since_last_run = (now - last_run).total_seconds() / 60
+                if time_since_last_run < interval:
+                    return False
+
+        # Check if current time falls within the scheduled window
+        if schedule_type == 'business_hours':
+            if len(hours) != 2:
+                return False
+            start_hour, end_hour = hours
+            if not (start_hour <= current_hour < end_hour):
+                return False
+
+        elif schedule_type == 'daily':
+            if len(hours) != 1:
+                return False
+            if current_hour != hours[0]:
+                return False
+
+        elif schedule_type == 'specific_hours':
+            if current_hour not in hours:
+                return False
+
+        else:
+            return False
+
+        # Check minute window
+        if current_minute >= minute_window:
+            return False
+
+        # Update last run time
+        self.last_run[task_name] = now
+        return True
 
     async def execute(self):
         """Override this method to define what the task does"""

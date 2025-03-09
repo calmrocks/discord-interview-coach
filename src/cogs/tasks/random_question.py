@@ -1,6 +1,7 @@
 from discord.ext import commands, tasks
 from datetime import datetime, time
 from ...utils.task_scheduler import BaseScheduledTask
+from ...config.task_config import TASK_CONFIG
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,11 +14,6 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
 
     def cog_unload(self):
         self.task_loop.cancel()
-
-    def should_run(self) -> bool:
-        if not self.is_business_hours():
-            return False
-        return True
 
     async def execute(self):
         """Send random questions to subscribed users"""
