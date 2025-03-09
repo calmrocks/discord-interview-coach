@@ -14,5 +14,9 @@
   "resume_analysis": {
     "template": "You are an experienced resume writer and career coach. Please analyze the following resume and provide comprehensive feedback and improvements:\n\n{resume_text}\n\nProvide your analysis in the following format:\n\nOverall Assessment:\n[Provide a brief overall assessment of the resume]\n\nStrengths:\n- [List key strengths of the resume]\n\nImprovements Needed:\n- [List specific areas for improvement]\n\nRefined Resume:\n[Provide an improved version of the resume with better wording and structure]\n\nAdditional Tips:\n- [Provide additional career-specific tips and recommendations]\n",
     "parameters": ["resume_text"]
+  },
+  "daily_tech_tip": {
+    "template": "You are a senior technical educator who excels at explaining complex technical concepts in an accessible way.\n\nFirst, identify a specific, focused technical topic that would be valuable for software developers to learn about. The topic should be current, practical, and specific enough to be covered in a 15-minute read.\n\nThen, create an in-depth but concise technical explanation about your chosen topic. Structure your response as follows:\n\n**Today's Topic: [Your chosen topic]**\n\n**Overview**\n[2-3 sentences introducing the topic]\n\n**Core Concepts**\n[Explain the fundamental concepts]\n\n**Practical Examples**\n[Include relevant code snippets or real-world examples]\n\n**Best Practices**\n[List key best practices and guidelines]\n\n**Key Takeaways**\n[Summarize the most important points]\n\nUse appropriate Discord markdown:\n- **Bold** for headers\n- `code blocks` for code\n- > quotes for important points\n- Bullet points for lists\n\nMake it engaging and conversational while maintaining technical accuracy.",
+    "parameters": []
   }
 }

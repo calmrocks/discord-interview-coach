@@ -284,3 +284,26 @@ class LLMProvider:
         except Exception as e:
             logger.error(f"Error generating resume feedback: {e}", exc_info=True)
             raise Exception(f"Failed to generate resume feedback: {str(e)}")
+
+    async def create_daily_tip(self) -> str:
+        """Generate and format a daily technical tip."""
+        try:
+            # Get the prompt template
+            prompt = self.prompt_manager.format_prompt(
+                "daily_tech_tip",
+            )
+            # Generate the complete tip
+            result = self._invoke_model(
+                prompt=prompt,
+                max_tokens=1500,
+                temperature=0.7
+            )
+            content = result.get("content", "").strip()
+
+            # Add footer
+            content = f"{content}\n\n*Happy learning! 📚*"
+
+            return content
+        except Exception as e:
+            logger.error(f"Error creating daily tip: {e}", exc_info=True)
+            return "Sorry, I couldn't generate today's tech tip. Please try again later."
