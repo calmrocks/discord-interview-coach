@@ -20,24 +20,34 @@ class InterviewCoach(commands.Bot):
         )
 
     async def setup_hook(self):
-        """Automatically load all cogs from the cogs directory"""
-        # Get the absolute path to the cogs directory
+        """Automatically load all cogs and tasks from the cogs directory"""
         cogs_dir = Path(__file__).parent / "cogs"
-
-        # Ensure we're looking at the correct directory
         print(f"Loading cogs from: {cogs_dir}")
 
-        # Loop through all python files in the cogs directory
+        # Function to load a cog with proper error handling
+        async def load_cog(cog_path: str):
+            try:
+                await self.load_extension(cog_path)
+                print(f'Successfully loaded {cog_path}')
+            except Exception as e:
+                print(f'Failed to load {cog_path}: {e}')
+
+        # Load regular cogs
         for file in os.listdir(cogs_dir):
             if file.endswith('.py') and not file.startswith('__'):
                 cog_name = file[:-3]  # Remove .py extension
                 cog_path = f'src.cogs.{cog_name}'
+                await load_cog(cog_path)
 
-                try:
-                    await self.load_extension(cog_path)
-                    print(f'Successfully loaded {cog_path}')
-                except Exception as e:
-                    print(f'Failed to load {cog_path}: {e}')
+        # Load task cogs from tasks subdirectory
+        tasks_dir = cogs_dir / "tasks"
+        if tasks_dir.exists():
+            print(f"Loading tasks from: {tasks_dir}")
+            for file in os.listdir(tasks_dir):
+                if file.endswith('.py') and not file.startswith('__'):
+                    task_name = file[:-3]  # Remove .py extension
+                    task_path = f'src.cogs.tasks.{task_name}'
+                    await load_cog(task_path)
 
     async def on_ready(self):
         print(f'{self.user} has connected to Discord!')
