@@ -1,6 +1,7 @@
 from discord.ext import commands, tasks
 from datetime import datetime, time
 from ...utils.task_scheduler import BaseScheduledTask
+from ..config.task_config import TASK_CONFIG
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,10 +21,19 @@ class DailyTips(commands.Cog, BaseScheduledTask):
         return now.hour == 10 and now.minute < 30
 
     async def execute(self):
-        """Send daily tips to designated channel"""
-        channel = self.bot.get_channel(123456789)  # Replace with your channel ID
-        if channel:
-            await channel.send("Daily tip placeholder")
+        """Send daily tips to all designated channels"""
+        channel_ids = TASK_CONFIG['daily_tips']['channel_ids']
+
+        for channel_id in channel_ids:
+            channel = self.bot.get_channel(channel_id)
+            if channel:
+                try:
+                    # await channel.send("Daily tip placeholder")
+                    logger.info(f"Sent daily tip to channel {channel_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send daily tip to channel {channel_id}: {e}")
+            else:
+                logger.warning(f"Could not find channel with ID {channel_id}")
 
     @tasks.loop(minutes=30)
     async def task_loop(self):

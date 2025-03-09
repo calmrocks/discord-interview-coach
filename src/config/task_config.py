@@ -1,4 +1,5 @@
 from datetime import time
+from .bot_config import DAILY_TIPS_CHANNEL_IDS
 
 TASK_CONFIG = {
     'random_questions': {
@@ -12,7 +13,7 @@ TASK_CONFIG = {
     },
     'daily_tips': {
         'enabled': True,
-        'channel_id': 123456789,
+        'channel_ids': DAILY_TIPS_CHANNEL_IDS,
         'send_time': time(10, 0),  # 10 AM
     },
     'game_invites': {
