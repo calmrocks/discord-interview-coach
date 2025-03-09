@@ -23,3 +23,4 @@ TASK_CONFIG = {
             (time(17, 0), time(20, 0)),  # After work
         ]
     }
+}
