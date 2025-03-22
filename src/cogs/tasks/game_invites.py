@@ -93,6 +93,7 @@ class GameInvites(commands.Cog, BaseScheduledTask):
     def __init__(self, bot):
         self.bot = bot
         self.active_invites = {}
+        self.active_games = {}
 
     def cog_unload(self):
         self.task_loop.cancel()
@@ -209,56 +210,78 @@ class GameInvites(commands.Cog, BaseScheduledTask):
     async def handle_game_start(self, message_id, game_class):
         """Handle game start when enough players join"""
         logger.info("=== Handle Game Start ===")
-        logger.info(f"Message ID: {message_id}")
-        logger.info(f"Game class: {game_class.__name__}")
-
         invite = self.active_invites.get(message_id)
         if not invite:
             logger.warning(f"No invite found for message {message_id}")
             return
 
-        logger.info(f"Found invite with {len(invite['players'])} players")
-        logger.info(f"Players: {[p.name for p in invite['players']]}")
-
         try:
-            logger.info("Creating game instance")
+            # Create and start the game
             game = game_class(self.bot, list(invite['players']), invite['channel'].guild)
-
-            logger.info("Setting up game channel")
             channel = await game.setup_channel()
-            logger.info(f"Created channel: {channel.name} ({channel.id})")
+
+            # Store the game in active_games
+            self.active_games[channel.id] = game
 
             # Notify players
             player_mentions = " ".join(player.mention for player in invite['players'])
-            logger.info(f"Sending welcome message to {len(invite['players'])} players")
             await channel.send(
                 f"Game starting! Welcome {player_mentions}\n"
+                f"Use `!stop` to end the game early.\n"
                 f"This channel will be deleted {game.cleanup_timeout} seconds after the game ends."
             )
 
-            logger.info("Starting game")
+            # Start the game
             await game.start_game()
-            logger.info("Game started successfully")
 
             # Update original message
-            logger.info("Updating original message")
             await invite['message'].edit(
                 content=f"Game started in {channel.mention}!",
                 view=None
             )
-            logger.info("Original message updated")
 
-            logger.info("=== Game Start Complete ===")
+            logger.info(f"Successfully started game in channel {channel.id}")
 
         except Exception as e:
-            logger.error("=== Error in handle_game_start ===")
-            logger.error(f"Error details: {e}")
-            logger.error("Stack trace:", exc_info=True)
+            logger.error(f"Error starting game: {e}", exc_info=True)
             await invite['message'].edit(
                 content="An error occurred while starting the game.",
                 view=None
             )
             raise
+
+    @commands.command(name="stop")
+    async def stop_game(self, ctx):
+        """Stop the current game in this channel"""
+        logger.info(f"Stop command received in channel {ctx.channel.name}")
+
+        # Check if this is a game channel
+        if not ctx.channel.name.startswith(('truth-or-dare-', 'word-guess-')):
+            logger.info(f"Stop command used in non-game channel: {ctx.channel.name}")
+            await ctx.send("This command can only be used in game channels!")
+            return
+
+        # Check if there's an active game in this channel
+        game = self.active_games.get(ctx.channel.id)
+        if not game:
+            logger.warning(f"No active game found in channel {ctx.channel.id}")
+            await ctx.send("No active game found in this channel!")
+            return
+
+        # Check if the user is a player in the game
+        if ctx.author not in game.players:
+            logger.warning(f"Non-player {ctx.author} tried to stop the game")
+            await ctx.send("Only players can stop the game!")
+            return
+
+        try:
+            logger.info(f"Stopping game in channel {ctx.channel.id}")
+            await game.stop_game()
+            del self.active_games[ctx.channel.id]
+            await ctx.send("Game stopped. This channel will be deleted soon.")
+        except Exception as e:
+            logger.error(f"Error stopping game: {e}", exc_info=True)
+            await ctx.send("An error occurred while stopping the game!")
 
 async def setup(bot):
     await bot.add_cog(GameInvites(bot))

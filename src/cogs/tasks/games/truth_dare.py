@@ -61,10 +61,14 @@ class TruthDare(BaseGame):
             logger.error(f"Error starting Truth or Dare game: {e}", exc_info=True)
             raise
 
-    async def end_game(self):
-        """End the game and clean up"""
-        await self.channel.send("Game Over! Thanks for playing!")
-        await super().end_game()
+    async def end_game(self, forced=False):
+        """End the Truth or Dare game"""
+        if not forced:
+            # Do any game-specific cleanup or final score display
+            await self.channel.send("Thanks for playing Truth or Dare!")
+
+        # Always call parent class end_game
+        await super().end_game(forced=forced)
 
     async def next_turn(self):
         if not self.is_active:

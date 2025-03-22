@@ -69,10 +69,23 @@ class BaseGame(ABC):
         self.start_time = datetime.now()
         self.is_active = True
 
-    @abstractmethod
-    async def end_game(self):
-        """End the game"""
+    async def stop_game(self):
+        """Stop the game early"""
+        logger.info(f"Stopping game in channel {self.channel.name}")
         self.is_active = False
+        await self.channel.send("Game has been stopped early.")
+        await self.end_game(forced=True)
+
+    async def end_game(self, forced=False):
+        """End the game and clean up"""
+        logger.info(f"Ending game in channel {self.channel.name} (forced: {forced})")
+        self.is_active = False
+
+        if forced:
+            await self.channel.send(f"Game ended. Channel will be deleted in {self.cleanup_timeout} seconds.")
+        else:
+            await self.channel.send(f"Game completed! Channel will be deleted in {self.cleanup_timeout} seconds.")
+
         await self.schedule_cleanup()
 
     async def schedule_cleanup(self):
@@ -87,4 +100,3 @@ class BaseGame(ABC):
                 logger.info(f"Successfully deleted channel {self.channel.name}")
             except Exception as e:
                 logger.error(f"Error deleting channel: {e}")
-

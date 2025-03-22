@@ -58,11 +58,15 @@ class WordGuess(BaseGame):
         )
         await self.start_round()
 
-    async def end_game(self):
-        """End the game and show final scores"""
-        await self.channel.send("Game Over! Thanks for playing!")
-        # Show final scores here if implemented
-        await super().end_game()
+    async def end_game(self, forced=False):
+        """End the Word Guess game"""
+        if not forced:
+            # Show final scores or game-specific cleanup
+            scores = self.get_scores()
+            await self.channel.send(f"Final scores:\n{scores}")
+
+        # Always call parent class end_game
+        await super().end_game(forced=forced)
 
     async def start_round(self):
         self.round_number += 1
