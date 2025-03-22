@@ -1,4 +1,5 @@
 from .base_game import BaseGame
+from .game_config import GAME_CONFIGS
 import discord
 import random
 import logging
@@ -6,28 +7,44 @@ import logging
 logger = logging.getLogger(__name__)
 
 class WordGuess(BaseGame):
-    GAME_NAME = "word-guess"
-    GAME_DESCRIPTION = "Guess the word from the given hint!"
-    MIN_PLAYERS = 3
+    def __init__(self, bot, players, guild):
+        logger.debug(f"Initializing WordGuess game with {len(players)} players")
+        try:
+            super().__init__(bot, players, guild)
+            logger.debug("BaseGame initialization complete")
+
+            logger.debug("Loading WordGuess config")
+            self._config = GAME_CONFIGS['word_guess']
+            logger.debug(f"Config loaded: {self._config}")
+
+            self.current_word = None
+            self.guesses = {}
+            self.round_number = 0
+            self.max_rounds = self._config['max_rounds']
+            logger.debug("WordGuess initialization complete")
+        except Exception as e:
+            logger.error(f"Error in WordGuess initialization: {e}", exc_info=True)
+            raise
 
     @property
     def name(self) -> str:
-        return self.GAME_NAME
+        logger.debug("Accessing name property")
+        return self._config['name']  # Changed from self.config to self._config
 
     @property
     def description(self) -> str:
-        return self.GAME_DESCRIPTION
+        logger.debug("Accessing description property")
+        return self._config['description']  # Changed from self.config to self._config
 
     @property
     def min_players(self) -> int:
-        return self.MIN_PLAYERS
+        logger.debug("Accessing min_players property")
+        return self._config['min_players']  # Changed from self.config to self._config
 
-    def __init__(self, bot, players, guild):
-        super().__init__(bot, players, guild)
-        self.current_word = None
-        self.guesses = {}
-        self.round_number = 0
-        self.max_rounds = 5
+    @property
+    def max_players(self) -> int:
+        logger.debug("Accessing max_players property")
+        return self._config['max_players']
 
     async def start_game(self):
         await super().start_game()

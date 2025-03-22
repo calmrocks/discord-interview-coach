@@ -1,4 +1,5 @@
 from .base_game import BaseGame
+from .game_config import GAME_CONFIGS
 import random
 import discord
 import logging
@@ -6,40 +7,59 @@ import logging
 logger = logging.getLogger(__name__)
 
 class TruthDare(BaseGame):
-    GAME_NAME = "truth-or-dare"
-    GAME_DESCRIPTION = "Classic Truth or Dare game!"
-    MIN_PLAYERS = 1
+    def __init__(self, bot, players, guild):
+        logger.debug(f"Initializing TruthDare game with {len(players)} players")
+        try:
+            super().__init__(bot, players, guild)
+            logger.debug("BaseGame initialization complete")
+
+            logger.debug("Loading TruthDare config")
+            self._config = GAME_CONFIGS['truth_dare']
+            logger.debug(f"Config loaded: {self._config}")
+
+            self.current_player = None
+            self.truths = self._config['truths']
+            self.dares = self._config['dares']
+            logger.debug("TruthDare initialization complete")
+        except Exception as e:
+            logger.error(f"Error in TruthDare initialization: {e}", exc_info=True)
+            raise
 
     @property
     def name(self) -> str:
-        return self.GAME_NAME
+        logger.debug("Accessing name property")
+        return self._config['name']  # Changed from self.config to self._config
 
     @property
     def description(self) -> str:
-        return self.GAME_DESCRIPTION
+        logger.debug("Accessing description property")
+        return self._config['description']  # Changed from self.config to self._config
 
     @property
     def min_players(self) -> int:
-        return self.MIN_PLAYERS
+        logger.debug("Accessing min_players property")
+        return self._config['min_players']  # Changed from self.config to self._config
 
-    def __init__(self, bot, players, guild):
-        super().__init__(bot, players, guild)
-        self.current_player = None
-        self.truths = [
-            "What's your biggest fear?",
-            "What's the most embarrassing thing you've done?",
-            # Add more truth questions
-        ]
-        self.dares = [
-            "Do your best impression of another player",
-            "Sing a song of your choice",
-            # Add more dares
-        ]
+    @property
+    def max_players(self) -> int:
+        logger.debug("Accessing max_players property")
+        return self._config['max_players']
 
     async def start_game(self):
+        """Start the Truth or Dare game"""
+        logger.info("=== Starting Truth or Dare Game ===")
         await super().start_game()
-        await self.channel.send("Welcome to Truth or Dare! Let's begin!")
-        await self.next_turn()
+
+        logger.info(f"Game started with {len(self.players)} players")
+        logger.info(f"Players: {[p.name for p in self.players]}")
+
+        try:
+            await self.channel.send("Welcome to Truth or Dare!")
+            await self.next_turn()
+            logger.info("First turn initiated")
+        except Exception as e:
+            logger.error(f"Error starting Truth or Dare game: {e}", exc_info=True)
+            raise
 
     async def end_game(self):
         """End the game and clean up"""
