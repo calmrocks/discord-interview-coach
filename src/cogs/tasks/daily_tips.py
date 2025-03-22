@@ -9,9 +9,12 @@ logger = logging.getLogger(__name__)
 
 class DailyTips(commands.Cog, BaseScheduledTask):
     def __init__(self, bot, llm_provider):
+        logger.info("Initializing DailyTips task")
         commands.Cog.__init__(self)
         BaseScheduledTask.__init__(self, bot)
         self.llm_provider = llm_provider
+        self.task_loop = self.create_task_loop()
+        logger.info("Starting DailyTips task loop")
         self.task_loop.start()
 
     def cog_unload(self):
@@ -19,7 +22,13 @@ class DailyTips(commands.Cog, BaseScheduledTask):
 
     async def execute(self):
         """Generate and send daily tech tip to all designated channels"""
-        channel_ids = TASK_CONFIG['daily_tips']['channel_ids']
+        logger.info("DailyTips execute method called")
+
+        if not self.should_run():
+            logger.info("DailyTips should_run() returned False - skipping execution")
+            return
+
+        channel_ids = TASK_CONFIG['dailytips']['channel_ids']
         logger.info(f"Executing daily tip task for channels: {channel_ids}")
 
         try:
@@ -45,14 +54,6 @@ class DailyTips(commands.Cog, BaseScheduledTask):
 
         except Exception as e:
             logger.error(f"Failed to execute daily tip task: {e}")
-
-    @tasks.loop(minutes=30)
-    async def task_loop(self):
-        await self.safe_execute()
-
-    @task_loop.before_loop
-    async def before_task_loop(self):
-        await self.bot.wait_until_ready()
 
 async def setup(bot):
     llm_provider = LLMProvider()

@@ -10,6 +10,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
     def __init__(self, bot):
         commands.Cog.__init__(self)
         BaseScheduledTask.__init__(self, bot)
+        self.task_loop = self.create_task_loop()
         self.task_loop.start()
 
     def cog_unload(self):
@@ -19,14 +20,6 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         """Send random questions to subscribed users"""
         # Implementation here
         pass
-
-    @tasks.loop(minutes=30)
-    async def task_loop(self):
-        await self.safe_execute()
-
-    @task_loop.before_loop
-    async def before_task_loop(self):
-        await self.bot.wait_until_ready()
 
 async def setup(bot):
     await bot.add_cog(RandomQuestions(bot))

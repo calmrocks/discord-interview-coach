@@ -21,8 +21,32 @@ class BaseScheduledTask:
             'last_success': None
         }
         self.last_run = {}
-
         self._register_status_command()
+
+    def create_task_loop(self):
+        """Create the task loop with configured interval"""
+        task_name = self.__class__.__name__.lower()
+        logger.info(f"[{task_name}] Loading task config")
+        logger.info(f"[{task_name}] Available configs: {TASK_CONFIG.keys()}")
+
+        config = TASK_CONFIG.get(task_name, {})
+        logger.info(f"[{task_name}] Loaded config: {config}")
+
+        loop_minutes = config.get('loop_minutes', 30)  # Default to 30 minutes if not specified
+        logger.info(f"Creating task loop for {task_name} with {loop_minutes} minute interval")
+
+        @tasks.loop(minutes=loop_minutes)
+        async def task_loop():  # Remove 'self' parameter here
+            logger.info(f"Task loop executing for {task_name}")
+            await self.safe_execute()  # 'self' is available from closure
+
+        @task_loop.before_loop
+        async def before_task_loop():  # Remove 'self' parameter here
+            logger.info(f"Waiting for bot to be ready before starting {task_name}")
+            await self.bot.wait_until_ready()
+            logger.info(f"Bot is ready, {task_name} task can start")
+
+        return task_loop
 
     def _register_status_command(self):
         """Register status command with a unique name based on the subclass"""
@@ -66,8 +90,11 @@ class BaseScheduledTask:
     def should_run(self) -> bool:
         """Common logic for determining if a task should run based on configuration"""
         task_name = self.__class__.__name__.lower()
+        logger.info(f"Checking should_run for {task_name}")
+
         config = TASK_CONFIG.get(task_name, {})
         if not config.get('enabled', False):
+            logger.info(f"[{task_name}] Task is not enabled in config")
             return False
 
         schedule = config.get('schedule', {})
@@ -80,12 +107,25 @@ class BaseScheduledTask:
         current_hour = now.hour
         current_minute = now.minute
 
+        logger.info(f"""
+        [{task_name}] Schedule check details:
+        - Current time: {now}
+        - Schedule type: {schedule_type}
+        - Target hours: {hours}
+        - Current hour: {current_hour}
+        - Current minute: {current_minute}
+        - Minute window: {minute_window}
+        - Interval: {interval}
+        """)
+
         # Check if enough time has passed since last run (for interval-based tasks)
         if interval > 0:
             last_run = self.last_run.get(task_name)
             if last_run:
                 time_since_last_run = (now - last_run).total_seconds() / 60
+                logger.info(f"[{task_name}] Time since last run: {time_since_last_run} minutes")
                 if time_since_last_run < interval:
+                    logger.info(f"[{task_name}] Not enough time passed since last run")
                     return False
 
         # Check if current time falls within the scheduled window
@@ -104,6 +144,7 @@ class BaseScheduledTask:
 
         elif schedule_type == 'specific_hours':
             if current_hour not in hours:
+                logger.info(f"[{task_name}] Current hour {current_hour} not in target hours {hours}")
                 return False
 
         else:
@@ -111,9 +152,11 @@ class BaseScheduledTask:
 
         # Check minute window
         if current_minute >= minute_window:
+            logger.info(f"[{task_name}] Current minute {current_minute} outside window {minute_window}")
             return False
 
         # Update last run time
+        logger.info(f"[{task_name}] All checks passed - task should run")
         self.last_run[task_name] = now
         return True
 
