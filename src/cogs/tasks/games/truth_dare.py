@@ -25,26 +25,6 @@ class TruthDare(BaseGame):
             logger.error(f"Error in TruthDare initialization: {e}", exc_info=True)
             raise
 
-    @property
-    def name(self) -> str:
-        logger.debug("Accessing name property")
-        return self._config['name']  # Changed from self.config to self._config
-
-    @property
-    def description(self) -> str:
-        logger.debug("Accessing description property")
-        return self._config['description']  # Changed from self.config to self._config
-
-    @property
-    def min_players(self) -> int:
-        logger.debug("Accessing min_players property")
-        return self._config['min_players']  # Changed from self.config to self._config
-
-    @property
-    def max_players(self) -> int:
-        logger.debug("Accessing max_players property")
-        return self._config['max_players']
-
     async def start_game(self):
         """Start the Truth or Dare game"""
         logger.info("=== Starting Truth or Dare Game ===")

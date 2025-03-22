@@ -14,24 +14,27 @@ class BaseGame(ABC):
         self.start_time = None
         self.is_active = False
         self.cleanup_timeout = 300  # 5 minutes default
+        self._config = None
 
     @property
-    @abstractmethod
     def name(self) -> str:
-        """Game name"""
-        pass
+        logger.debug("Accessing name property")
+        return self._config['name']
 
     @property
-    @abstractmethod
     def description(self) -> str:
-        """Game description"""
-        pass
+        logger.debug("Accessing description property")
+        return self._config['description']
 
     @property
-    @abstractmethod
     def min_players(self) -> int:
-        """Minimum number of players"""
-        pass
+        logger.debug("Accessing min_players property")
+        return self._config['min_players']
+
+    @property
+    def max_players(self) -> int:
+        logger.debug("Accessing max_players property")
+        return self._config['max_players']
 
     async def setup_channel(self):
         """Create and set up game channel"""
