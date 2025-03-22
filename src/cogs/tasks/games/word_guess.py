@@ -29,18 +29,6 @@ class WordGuess(BaseGame):
         self.round_number = 0
         self.max_rounds = 5
 
-    @property
-    def name(self) -> str:
-        return "word-guess"
-
-    @property
-    def description(self) -> str:
-        return "Guess the word from the given hint!"
-
-    @property
-    def min_players(self) -> int:
-        return 3
-
     async def start_game(self):
         await super().start_game()
         await self.channel.send(

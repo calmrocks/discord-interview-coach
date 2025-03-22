@@ -55,11 +55,15 @@ class GameSelectView(discord.ui.View):
             # Add the player to the set of players
             invite['players'].add(interaction.user)
 
+            # Get min_players from game class
+            temp_game = game_class(self.cog.bot, [], interaction.guild)
+            min_players = temp_game.min_players
+
             # Update the original message
             players_text = "\n".join([f"• {player.display_name}" for player in invite['players']])
             embed = interaction.message.embeds[0]
             embed.add_field(
-                name=f"Players ({len(invite['players'])}/3):",
+                name=f"Players ({len(invite['players'])}/{min_players}):",
                 value=players_text,
                 inline=False
             )
@@ -67,13 +71,13 @@ class GameSelectView(discord.ui.View):
 
             # Tell them they've joined
             await interaction.response.send_message(
-                f"You've joined the game! ({len(invite['players'])}/3 players)\n"
-                f"Waiting for {3 - len(invite['players'])} more players...",
+                f"You've joined the game! ({len(invite['players'])}/{min_players} players)\n"
+                f"Waiting for {min_players - len(invite['players'])} more players...",
                 ephemeral=True
             )
 
             # If we have enough players, start the game
-            if len(invite['players']) >= 3:
+            if len(invite['players']) >= min_players:
                 await self.cog.handle_game_start(message_id, game_class)
 
         return callback
@@ -99,7 +103,6 @@ class GameInvites(commands.Cog, BaseScheduledTask):
             title="🎮 Let's Play a Game!",
             description=(
                 "Choose a game to play!\n"
-                "Need 3 players to start.\n"
                 "Invite expires in 60 seconds."
             ),
             color=discord.Color.blue()
@@ -112,12 +115,13 @@ class GameInvites(commands.Cog, BaseScheduledTask):
                 # Create a temporary instance to access the properties
                 temp_game = game_class(self.bot, [], channel.guild)
                 # Get the values from the properties
-                game_name = str(temp_game.name)  # Convert to string explicitly
-                game_desc = str(temp_game.description)  # Convert to string explicitly
+                game_name = str(temp_game.name)
+                game_desc = str(temp_game.description)
+                min_players = temp_game.min_players
 
                 logger.info(f"Adding game to embed: {game_name}")
                 embed.add_field(
-                    name=game_name,
+                    name=f"{game_name} (Needs {min_players} players)",
                     value=game_desc,
                     inline=False
                 )
@@ -127,14 +131,14 @@ class GameInvites(commands.Cog, BaseScheduledTask):
 
         if initiator:
             embed.add_field(
-                name="Players (1/3):",
+                name="Players (1/?):",  # Remove hardcoded player count
                 value=f"• {initiator.display_name}",
                 inline=False
             )
             embed.set_footer(text=f"Started by {initiator.name}")
         else:
             embed.add_field(
-                name="Players (0/3):",
+                name="Players (0/?):",  # Remove hardcoded player count
                 value="Waiting for players...",
                 inline=False
             )
@@ -151,8 +155,7 @@ class GameInvites(commands.Cog, BaseScheduledTask):
                 'initiator': initiator
             }
 
-            # Schedule cleanup of invite if no one joins
-            await self.schedule_invite_cleanup(message.id)  # Fixed message_id to message.id
+            await self.schedule_invite_cleanup(message.id)
             return message
 
         except Exception as e:
@@ -163,9 +166,19 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         """Schedule cleanup of inactive invites"""
         await asyncio.sleep(60)  # Wait for 1 minute
         invite = self.active_invites.get(message_id)
-        if invite and len(invite['players']) < 3:
-            await invite['message'].edit(content="Not enough players joined. Game cancelled.", view=None)
-            del self.active_invites[message_id]
+        if invite:
+            message = invite['message']
+            for component in message.components:
+                for button in component.children:
+                    game_id = button.custom_id.replace('game_', '')
+                    if game_id in AVAILABLE_GAMES:
+                        game_class = AVAILABLE_GAMES[game_id]
+                        temp_game = game_class(self.bot, [], message.guild)
+                        min_players = temp_game.min_players
+                        if len(invite['players']) < min_players:
+                            await message.edit(content="Not enough players joined. Game cancelled.", view=None)
+                            del self.active_invites[message_id]
+                            return
 
     async def execute(self):
         """Send scheduled game invites"""
@@ -199,7 +212,10 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         if not invite:
             return
 
-        if len(invite['players']) >= 3:
+        temp_game = game_class(self.bot, [], invite['message'].guild)
+        min_players = temp_game.min_players
+
+        if len(invite['players']) >= min_players:
             try:
                 # Create and start the game
                 game = game_class(self.bot, list(invite['players']), invite['message'].guild)

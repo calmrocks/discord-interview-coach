@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class TruthDare(BaseGame):
     GAME_NAME = "truth-or-dare"
     GAME_DESCRIPTION = "Classic Truth or Dare game!"
-    MIN_PLAYERS = 3
+    MIN_PLAYERS = 1
 
     @property
     def name(self) -> str:
@@ -35,18 +35,6 @@ class TruthDare(BaseGame):
             "Sing a song of your choice",
             # Add more dares
         ]
-
-    @property
-    def name(self) -> str:
-        return "truth-or-dare"
-
-    @property
-    def description(self) -> str:
-        return "Classic Truth or Dare game!"
-
-    @property
-    def min_players(self) -> int:
-        return 3
 
     async def start_game(self):
         await super().start_game()
