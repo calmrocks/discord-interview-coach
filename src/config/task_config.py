@@ -1,5 +1,5 @@
 from datetime import time
-from .bot_config import DAILY_TIPS_CHANNEL_IDS, TEST_USER_IDS
+from .bot_config import DAILY_TIPS_CHANNEL_IDS, GAME_CHANNELS_IDS, TEST_USER_IDS
 
 TASK_CONFIG = {
     'randomquestions': {
@@ -25,12 +25,18 @@ TASK_CONFIG = {
     },
     'gameinvites': {
         'enabled': True,
+        'channel_ids': GAME_CHANNELS_IDS,
         'loop_minutes': 15,
         'schedule': {
             'type': 'specific_hours',
-            'hours': [12, 17, 18, 19],  # specific hours to run
+            'hours': [12, 17, 18, 19, 22],  # specific hours to run
             'minute_window': 60,  # run any time within the hour
-            'interval': 15  # minutes
+            'interval': 1  # minutes
+        },
+        'game_settings': {
+            'player_wait_time': 60,  # seconds to wait for players
+            'cleanup_delay': 300,    # seconds to wait before cleaning up
+            'min_players': 3
         }
     }
 }

@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from typing import List
 
 # Load environment variables
 load_dotenv()
@@ -15,12 +16,15 @@ TEST_USER_IDS = [
     if id.strip().isdigit()
 ]
 
-# Parse daily tips channel IDs
-DAILY_TIPS_CHANNEL_IDS = [
-    int(id.strip())
-    for id in os.getenv('DAILY_TIPS_CHANNEL_IDS', '').split(',')
-    if id.strip().isdigit()
-]
+def get_channel_ids(env_var: str) -> List[int]:
+    """Convert comma-separated channel IDs from env to list of ints"""
+    channel_ids_str = os.getenv(env_var, '')
+    if not channel_ids_str:
+        return []
+    return [int(channel_id) for channel_id in channel_ids_str.split(',') if channel_id]
+
+DAILY_TIPS_CHANNEL_IDS = get_channel_ids('DAILY_TIPS_CHANNEL_IDS')
+GAME_CHANNELS_IDS = get_channel_ids('GAME_CHANNELS_IDS')
 
 # Ensure required environment variables are set
 if not DISCORD_TOKEN:
@@ -31,3 +35,6 @@ if not TEST_USER_IDS:
 
 if not DAILY_TIPS_CHANNEL_IDS:
     raise ValueError("No daily tips channel IDs found in environment variables")
+
+if not GAME_CHANNELS_IDS:
+    raise ValueError("No game channel IDs found in environment variables")
