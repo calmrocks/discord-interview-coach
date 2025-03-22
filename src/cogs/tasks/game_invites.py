@@ -44,12 +44,35 @@ class GameSelectView(discord.ui.View):
                 )
                 return
 
+            # Check if player already joined
+            if interaction.user in invite['players']:
+                await interaction.response.send_message(
+                    "You've already joined this game!",
+                    ephemeral=True
+                )
+                return
+
+            # Add the player to the set of players
             invite['players'].add(interaction.user)
+
+            # Update the original message
+            players_text = "\n".join([f"• {player.display_name}" for player in invite['players']])
+            embed = interaction.message.embeds[0]
+            embed.add_field(
+                name=f"Players ({len(invite['players'])}/3):",
+                value=players_text,
+                inline=False
+            )
+            await invite['message'].edit(embed=embed)
+
+            # Tell them they've joined
             await interaction.response.send_message(
-                f"You've joined the game! ({len(invite['players'])}/3 players)",
+                f"You've joined the game! ({len(invite['players'])}/3 players)\n"
+                f"Waiting for {3 - len(invite['players'])} more players...",
                 ephemeral=True
             )
 
+            # If we have enough players, start the game
             if len(invite['players']) >= 3:
                 await self.cog.handle_game_start(message_id, game_class)
 
@@ -74,7 +97,11 @@ class GameInvites(commands.Cog, BaseScheduledTask):
 
         embed = discord.Embed(
             title="🎮 Let's Play a Game!",
-            description="Choose a game to play:",
+            description=(
+                "Choose a game to play!\n"
+                "Need 3 players to start.\n"
+                "Invite expires in 60 seconds."
+            ),
             color=discord.Color.blue()
         )
 
@@ -99,8 +126,18 @@ class GameInvites(commands.Cog, BaseScheduledTask):
                 continue
 
         if initiator:
+            embed.add_field(
+                name="Players (1/3):",
+                value=f"• {initiator.display_name}",
+                inline=False
+            )
             embed.set_footer(text=f"Started by {initiator.name}")
         else:
+            embed.add_field(
+                name="Players (0/3):",
+                value="Waiting for players...",
+                inline=False
+            )
             embed.set_footer(text="Scheduled game invite")
 
         try:
