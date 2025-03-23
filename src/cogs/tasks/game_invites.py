@@ -56,22 +56,33 @@ class GameSelectView(discord.ui.View):
             # Store the selected game class if not already stored
             if not invite.get('selected_game'):
                 invite['selected_game'] = game_class
-                invite['start_time'] = datetime.now()  # Start the timer when first game is selected
+                invite['start_time'] = datetime.now()
 
-            # Check if player is already in the game
-            if interaction.user in invite['players']:
-                await interaction.response.send_message(
-                    "You've already joined this game!",
-                    ephemeral=True
-                )
-                return
-
-            # Check if game is full
             temp_game = game_class(self.bot, [], interaction.guild)
             current_players = len(invite['players'])
+
+            # First check if we've reached max players (including current player if they haven't joined)
             if current_players >= temp_game.max_players:
                 await interaction.response.send_message(
                     "This game is already full!",
+                    ephemeral=True
+                )
+                # Start the game if we just reached max players
+                if current_players == temp_game.max_players:
+                    logger.info("Maximum players reached - starting game immediately")
+                    if invite.get('cleanup_task'):
+                        invite['cleanup_task'].cancel()
+                    try:
+                        await self.cog.handle_game_start(message_id, game_class)
+                        logger.info("Game started successfully")
+                    except Exception as e:
+                        logger.error(f"Error in handle_game_start: {e}", exc_info=True)
+                return
+
+            # Now check if player is already in the game
+            if interaction.user in invite['players']:
+                await interaction.response.send_message(
+                    "You've already joined this game!",
                     ephemeral=True
                 )
                 return
@@ -82,36 +93,42 @@ class GameSelectView(discord.ui.View):
             logger.info(f"After adding player - Total players: {current_players}")
             logger.info(f"Updated players list: {[p.name for p in invite['players']]}")
 
-            # Start game immediately if max players reached
+            # Check if max players reached after adding new player
             if current_players >= temp_game.max_players:
                 await interaction.response.send_message(
                     "Maximum players reached! Starting game...",
                     ephemeral=True
                 )
-                logger.info("Maximum players reached - starting game")
+                logger.info("Maximum players reached - starting game immediately")
+
+                # Cancel the cleanup task
+                if invite.get('cleanup_task'):
+                    invite['cleanup_task'].cancel()
+
+                # Start the game immediately
                 try:
-                    # Cancel the cleanup task
-                    if invite.get('cleanup_task'):
-                        invite['cleanup_task'].cancel()
                     await self.cog.handle_game_start(message_id, game_class)
+                    logger.info("Game started successfully")
+                    return
                 except Exception as e:
                     logger.error(f"Error in handle_game_start: {e}", exc_info=True)
+                    return
+
+            # If not max players, show waiting message
+            players_needed = temp_game.min_players - current_players
+            if players_needed > 0:
+                await interaction.response.send_message(
+                    f"You've joined! Need {players_needed} more player(s) to start.\n"
+                    f"Current: {current_players}/{temp_game.max_players} players\n"
+                    "Game will start in 60 seconds if minimum players is reached.",
+                    ephemeral=True
+                )
             else:
-                # Show how many more players needed
-                players_needed = temp_game.min_players - current_players
-                if players_needed > 0:
-                    await interaction.response.send_message(
-                        f"You've joined! Need {players_needed} more player(s) to start.\n"
-                        f"Current: {current_players}/{temp_game.max_players} players\n"
-                        "Game will start in 60 seconds if minimum players is reached.",
-                        ephemeral=True
-                    )
-                else:
-                    await interaction.response.send_message(
-                        f"You've joined! ({current_players}/{temp_game.max_players} players)\n"
-                        "Game will start in 60 seconds!",
-                        ephemeral=True
-                    )
+                await interaction.response.send_message(
+                    f"You've joined! ({current_players}/{temp_game.max_players} players)\n"
+                    "Game will start in 60 seconds!",
+                    ephemeral=True
+                )
 
             logger.info("=== Game Button Callback Completed ===")
 
