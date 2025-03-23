@@ -8,14 +8,13 @@ from .games import AVAILABLE_GAMES
 from .games.game_config import GAME_CONFIGS
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 class GameSelectView(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=60)
         self.cog = cog
-        self.bot = cog.bot  # Add this line to get the bot instance
+        self.bot = cog.bot
         logger.debug("Initializing GameSelectView")
         self.add_game_buttons()
 
@@ -24,7 +23,7 @@ class GameSelectView(discord.ui.View):
         for game_id, game_class in AVAILABLE_GAMES.items():
             logger.debug(f"Adding button for game: {game_id}")
             try:
-                temp_game = game_class(self.bot, [], None)  # Now self.bot will be available
+                temp_game = game_class(self.bot, [], None)
                 button = discord.ui.Button(
                     label=temp_game.name,
                     custom_id=f"game_{game_id}",
@@ -54,11 +53,28 @@ class GameSelectView(discord.ui.View):
                 )
                 return
 
-            logger.info(f"Current players in invite: {len(invite['players'])}")
-            logger.info(f"Players: {[p.name for p in invite['players']]}")
+            # Store the selected game class if not already stored
+            if not invite.get('selected_game'):
+                invite['selected_game'] = game_class
+                invite['start_time'] = datetime.now()  # Start the timer when first game is selected
 
-            temp_game = game_class(self.bot, [], interaction.guild)  # Using self.bot here
-            logger.info(f"Game requirements - Min: {temp_game.min_players}, Max: {temp_game.max_players}")
+            # Check if player is already in the game
+            if interaction.user in invite['players']:
+                await interaction.response.send_message(
+                    "You've already joined this game!",
+                    ephemeral=True
+                )
+                return
+
+            # Check if game is full
+            temp_game = game_class(self.bot, [], interaction.guild)
+            current_players = len(invite['players'])
+            if current_players >= temp_game.max_players:
+                await interaction.response.send_message(
+                    "This game is already full!",
+                    ephemeral=True
+                )
+                return
 
             # Add player
             invite['players'].add(interaction.user)
@@ -66,24 +82,36 @@ class GameSelectView(discord.ui.View):
             logger.info(f"After adding player - Total players: {current_players}")
             logger.info(f"Updated players list: {[p.name for p in invite['players']]}")
 
-            await interaction.response.send_message(
-                f"You've joined the game! ({current_players}/{temp_game.max_players} players)",
-                ephemeral=True
-            )
-            logger.info("Sent join confirmation message")
-
-            # Check if we have enough players
-            logger.info(f"Checking if can start game: Current={current_players}, Required={temp_game.min_players}")
-            if current_players >= temp_game.min_players:
-                logger.info("=== Starting Game Process ===")
+            # Start game immediately if max players reached
+            if current_players >= temp_game.max_players:
+                await interaction.response.send_message(
+                    "Maximum players reached! Starting game...",
+                    ephemeral=True
+                )
+                logger.info("Maximum players reached - starting game")
                 try:
-                    logger.info("Calling handle_game_start")
+                    # Cancel the cleanup task
+                    if invite.get('cleanup_task'):
+                        invite['cleanup_task'].cancel()
                     await self.cog.handle_game_start(message_id, game_class)
-                    logger.info("handle_game_start completed")
                 except Exception as e:
                     logger.error(f"Error in handle_game_start: {e}", exc_info=True)
             else:
-                logger.info("Not enough players to start game yet")
+                # Show how many more players needed
+                players_needed = temp_game.min_players - current_players
+                if players_needed > 0:
+                    await interaction.response.send_message(
+                        f"You've joined! Need {players_needed} more player(s) to start.\n"
+                        f"Current: {current_players}/{temp_game.max_players} players\n"
+                        "Game will start in 60 seconds if minimum players is reached.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        f"You've joined! ({current_players}/{temp_game.max_players} players)\n"
+                        "Game will start in 60 seconds!",
+                        ephemeral=True
+                    )
 
             logger.info("=== Game Button Callback Completed ===")
 
@@ -96,7 +124,10 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         self.active_games = {}
 
     def cog_unload(self):
-        self.task_loop.cancel()
+        # Cancel all active tasks
+        for invite in self.active_invites.values():
+            if invite.get('cleanup_task'):
+                invite['cleanup_task'].cancel()
 
     async def create_game_invite(self, channel, initiator=None):
         """Create a game invite"""
@@ -111,7 +142,7 @@ class GameInvites(commands.Cog, BaseScheduledTask):
 
             # Process each game
             for game_id, game_class in AVAILABLE_GAMES.items():
-                logger.info(f"Processing game: {game_id}")
+                logger.debug(f"Processing game: {game_id}")
                 try:
                     temp_game = game_class(self.bot, [], channel.guild)
                     embed.add_field(
@@ -126,14 +157,20 @@ class GameInvites(commands.Cog, BaseScheduledTask):
             view = GameSelectView(self)
             message = await channel.send(embed=embed, view=view)
 
+            # Initialize invite data
             self.active_invites[message.id] = {
                 'message': message,
                 'players': set([initiator]) if initiator else set(),
                 'channel': channel,
-                'selected_game': None  # Add this to track selected game
+                'selected_game': None,
+                'start_time': None,
+                'cleanup_task': None
             }
 
-            await self.schedule_invite_cleanup(message.id)
+            # Schedule cleanup
+            cleanup_task = self.bot.loop.create_task(self.check_invite_status(message.id))
+            self.active_invites[message.id]['cleanup_task'] = cleanup_task
+
             return message
 
         except Exception as e:
@@ -141,71 +178,40 @@ class GameInvites(commands.Cog, BaseScheduledTask):
             await channel.send("Error creating game invite. Please try again.")
             raise
 
-    async def schedule_invite_cleanup(self, message_id):
-        """Schedule cleanup of inactive invites"""
-        logger.debug(f"Starting cleanup schedule for message ID: {message_id}")
-        await asyncio.sleep(60)
+    async def check_invite_status(self, message_id):
+        """Check invite status after 60 seconds"""
+        await asyncio.sleep(60)  # Wait 60 seconds
 
-        logger.debug(f"Checking invite for message ID: {message_id}")
         invite = self.active_invites.get(message_id)
-        if invite:
+        if not invite:
+            return
+
+        # If game hasn't started yet
+        if not invite.get('game'):
             message = invite['message']
+            selected_game = invite.get('selected_game')
+            current_players = len(invite['players'])
+
             try:
-                selected_game = invite.get('selected_game')
-                if selected_game:
-                    player_count = len(invite['players'])
+                if not selected_game:
+                    await message.edit(content="No game was selected. Invite cancelled.", view=None)
+                else:
                     temp_game = selected_game(self.bot, [], message.guild)
-
-                    logger.info(f"Checking player count for {selected_game.__name__}: {player_count} players")
-
-                    if player_count < temp_game.min_players:
-                        logger.info(f"Not enough players for {selected_game.__name__}. Need at least {temp_game.min_players}, got {player_count}")
+                    if current_players >= temp_game.min_players:
+                        # Start the game if we have enough players
+                        await self.handle_game_start(message_id, selected_game)
+                        return
+                    else:
                         await message.edit(
                             content=f"Not enough players joined. Need at least {temp_game.min_players} players. Game cancelled.",
                             view=None
                         )
-                    elif player_count > temp_game.max_players:
-                        logger.info(f"Too many players for {selected_game.__name__}. Maximum is {temp_game.max_players}, got {player_count}")
-                        await message.edit(
-                            content=f"Too many players joined. Maximum is {temp_game.max_players} players. Game cancelled.",
-                            view=None
-                        )
-                else:
-                    logger.info("No game was selected. Cancelling invite.")
-                    await message.edit(content="No game was selected. Invite cancelled.", view=None)
-
-                del self.active_invites[message_id]
-
             except Exception as e:
-                logger.error(f"Error in cleanup: {e}", exc_info=True)
+                logger.error(f"Error in check_invite_status: {e}", exc_info=True)
                 await message.edit(content="Error occurred. Game cancelled.", view=None)
-                del self.active_invites[message_id]
 
-    async def execute(self):
-        """Send scheduled game invites"""
-        logger.info("Executing scheduled game invites")
-
-        # Get channels from config
-        config = TASK_CONFIG.get('gameinvites', {})
-        channel_ids = config.get('channel_ids', [])  # Changed from game_channels to channel_ids
-
-        logger.info(f"Found {len(channel_ids)} configured channels for game invites")
-
-        for channel_id in channel_ids:
-            channel = self.bot.get_channel(channel_id)
-            if channel:
-                logger.info(f"Creating scheduled game invite in channel {channel.name} ({channel_id})")
-                try:
-                    await self.create_game_invite(channel)
-                except Exception as e:
-                    logger.error(f"Error creating game invite in channel {channel.name} ({channel_id}): {e}")
-            else:
-                logger.warning(f"Could not find channel with ID {channel_id}")
-
-    @commands.command(name="startgame")
-    async def start_game(self, ctx):
-        """Start a new game manually"""
-        await self.create_game_invite(ctx.channel, ctx.author)
+            # Clean up the invite
+            del self.active_invites[message_id]
 
     async def handle_game_start(self, message_id, game_class):
         """Handle game start when enough players join"""
@@ -240,6 +246,9 @@ class GameInvites(commands.Cog, BaseScheduledTask):
                 view=None
             )
 
+            # Clean up the invite
+            del self.active_invites[message_id]
+
             logger.info(f"Successfully started game in channel {channel.id}")
 
         except Exception as e:
@@ -250,25 +259,22 @@ class GameInvites(commands.Cog, BaseScheduledTask):
             )
             raise
 
+    @commands.command(name="startgame")
+    async def start_game(self, ctx):
+        """Start a new game manually"""
+        await self.create_game_invite(ctx.channel, ctx.author)
+
     @commands.command(name="stop")
     async def stop_game(self, ctx):
         """Stop the current game in this channel"""
         logger.info(f"Stop command received in channel {ctx.channel.name}")
 
-        # Check if this is a game channel
-        if not ctx.channel.name.startswith(('truth-or-dare-', 'word-guess-')):
-            logger.info(f"Stop command used in non-game channel: {ctx.channel.name}")
-            await ctx.send("This command can only be used in game channels!")
-            return
-
-        # Check if there's an active game in this channel
         game = self.active_games.get(ctx.channel.id)
         if not game:
             logger.warning(f"No active game found in channel {ctx.channel.id}")
             await ctx.send("No active game found in this channel!")
             return
 
-        # Check if the user is a player in the game
         if ctx.author not in game.players:
             logger.warning(f"Non-player {ctx.author} tried to stop the game")
             await ctx.send("Only players can stop the game!")
@@ -282,6 +288,25 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         except Exception as e:
             logger.error(f"Error stopping game: {e}", exc_info=True)
             await ctx.send("An error occurred while stopping the game!")
+
+    async def execute(self):
+        """Send scheduled game invites"""
+        logger.info("Executing scheduled game invites")
+        config = TASK_CONFIG.get('gameinvites', {})
+        channel_ids = config.get('channel_ids', [])
+
+        logger.info(f"Found {len(channel_ids)} configured channels for game invites")
+
+        for channel_id in channel_ids:
+            channel = self.bot.get_channel(channel_id)
+            if channel:
+                logger.info(f"Creating scheduled game invite in channel {channel.name} ({channel_id})")
+                try:
+                    await self.create_game_invite(channel)
+                except Exception as e:
+                    logger.error(f"Error creating game invite in channel {channel.name} ({channel_id}): {e}")
+            else:
+                logger.warning(f"Could not find channel with ID {channel_id}")
 
 async def setup(bot):
     await bot.add_cog(GameInvites(bot))
