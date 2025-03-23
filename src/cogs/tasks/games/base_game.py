@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import discord
 from abc import ABC, abstractmethod
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -76,30 +77,40 @@ class BaseGame(ABC):
         """Stop the game early"""
         logger.info(f"Stopping game in channel {self.channel.name}")
         self.is_active = False
-        await self.channel.send("Game has been stopped early.")
-        await self.end_game(forced=True)
+        try:
+            await self.channel.send("Game has been stopped early.")
+            await self.end_game(forced=True)
+        except discord.NotFound:
+            # Channel already deleted
+            pass
 
     async def end_game(self, forced=False):
         """End the game and clean up"""
         logger.info(f"Ending game in channel {self.channel.name} (forced: {forced})")
         self.is_active = False
 
-        if forced:
-            await self.channel.send(f"Game ended. Channel will be deleted in {self.cleanup_timeout} seconds.")
-        else:
-            await self.channel.send(f"Game completed! Channel will be deleted in {self.cleanup_timeout} seconds.")
+        try:
+            if forced:
+                await self.channel.send(f"Game ended. Channel will be deleted in {self.cleanup_timeout} seconds.")
+            else:
+                await self.channel.send(f"Game completed! Channel will be deleted in {self.cleanup_timeout} seconds.")
+        except discord.NotFound:
+            # Channel already deleted
+            return
 
         await self.schedule_cleanup()
 
     async def schedule_cleanup(self):
         """Schedule channel cleanup"""
         logger.info(f"Scheduling cleanup for channel {self.channel.name} in {self.cleanup_timeout} seconds")
-        await discord.utils.sleep_until(
-            datetime.now() + timedelta(seconds=self.cleanup_timeout)
-        )
-        if self.channel:
-            try:
+        await asyncio.sleep(self.cleanup_timeout)
+
+        try:
+            if self.channel:
                 await self.channel.delete()
                 logger.info(f"Successfully deleted channel {self.channel.name}")
-            except Exception as e:
-                logger.error(f"Error deleting channel: {e}")
+        except discord.NotFound:
+            # Channel already deleted
+            logger.info(f"Channel {self.channel.name} was already deleted")
+        except Exception as e:
+            logger.error(f"Error deleting channel: {e}")

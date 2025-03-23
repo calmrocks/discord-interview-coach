@@ -7,6 +7,7 @@ from ...config.task_config import TASK_CONFIG
 from .games import AVAILABLE_GAMES
 from .games.game_config import GAME_CONFIGS
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -289,22 +290,39 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         game = self.active_games.get(ctx.channel.id)
         if not game:
             logger.warning(f"No active game found in channel {ctx.channel.id}")
-            await ctx.send("No active game found in this channel!")
+            try:
+                await ctx.send("No active game found in this channel!")
+            except discord.NotFound:
+                pass
             return
 
         if ctx.author not in game.players:
             logger.warning(f"Non-player {ctx.author} tried to stop the game")
-            await ctx.send("Only players can stop the game!")
+            try:
+                await ctx.send("Only players can stop the game!")
+            except discord.NotFound:
+                pass
             return
 
         try:
             logger.info(f"Stopping game in channel {ctx.channel.id}")
+            # Send message before stopping the game
+            try:
+                await ctx.send("Game stopped. This channel will be deleted soon.")
+            except discord.NotFound:
+                pass
+
+            # Stop the game and clean up
             await game.stop_game()
-            del self.active_games[ctx.channel.id]
-            await ctx.send("Game stopped. This channel will be deleted soon.")
+            if ctx.channel.id in self.active_games:
+                del self.active_games[ctx.channel.id]
+
         except Exception as e:
             logger.error(f"Error stopping game: {e}", exc_info=True)
-            await ctx.send("An error occurred while stopping the game!")
+            try:
+                await ctx.send("An error occurred while stopping the game!")
+            except discord.NotFound:
+                pass
 
     async def execute(self):
         """Send scheduled game invites"""
