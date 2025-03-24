@@ -5,7 +5,6 @@ from datetime import datetime, time
 from ...utils.task_scheduler import BaseScheduledTask
 from ...config.task_config import TASK_CONFIG
 from .games import AVAILABLE_GAMES
-from .games.game_config import GAME_CONFIGS
 import logging
 import asyncio
 

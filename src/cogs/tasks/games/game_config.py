@@ -43,9 +43,92 @@ GAME_CONFIGS = {
     'word_guess': {
         'name': 'Word Guess',
         'description': 'Guess the word from the given hint!',
-        'min_players': 2,
+        'min_players': 1,
         'max_players': 8,
         'max_rounds': 5,
-        'words': []
+        'commands': {
+            '/quit': 'Quit the current game',
+            '/skip': 'Skip the current word',
+            '/score': 'Show current scores',
+            '/help': 'Show available commands'
+        },
+        'words': [
+            {
+                'word': 'python',
+                'hints': [
+                    'It is a programming language',
+                    'It is named after a snake',
+                    'It uses indentation for blocks'
+                ]
+            },
+            {
+                'word': 'coffee',
+                'hints': [
+                    'It is a popular beverage',
+                    'It contains caffeine',
+                    'Many people drink it in the morning'
+                ]
+            },
+            {
+                'word': 'pizza',
+                'hints': [
+                    'It is a popular food',
+                    'It is usually round',
+                    'Often topped with cheese and tomato sauce'
+                ]
+            },
+            {
+                'word': 'computer',
+                'hints': [
+                    'An electronic device',
+                    'Used for processing data',
+                    'Has a keyboard and screen'
+                ]
+            },
+            {
+                'word': 'elephant',
+                'hints': [
+                    'It is a large animal',
+                    'Has a long trunk',
+                    'Found in Africa and Asia'
+                ]
+            },
+            {
+                'word': 'umbrella',
+                'hints': [
+                    'Used on rainy days',
+                    'Keeps you dry',
+                    'Opens and closes'
+                ]
+            },
+            {
+                'word': 'bicycle',
+                'hints': [
+                    'Has two wheels',
+                    'Human-powered transport',
+                    'You need to pedal it'
+                ]
+            },
+            {
+                'word': 'rainbow',
+                'hints': [
+                    'Appears after rain',
+                    'Has multiple colors',
+                    'Arc shape in the sky'
+                ]
+            }
+        ],
+        'scoring': {
+            'correct_first_try': 3,    # Points for correct guess without hints
+            'correct_second_try': 2,    # Points after first hint
+            'correct_third_try': 1,     # Points after second hint
+            'skip_penalty': -1          # Points deducted for skipping
+        },
+        'game_rules': {
+            'hints_allowed': 3,         # Maximum number of hints per word
+            'guess_time': 30,           # Seconds allowed for each guess
+            'skip_allowed': True,       # Whether skipping is allowed
+            'case_sensitive': False     # Whether guesses are case sensitive
+        }
     }
 }
