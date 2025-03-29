@@ -144,6 +144,8 @@ GAME_CONFIGS = {
         'num_questions': 3,
         'question_timeout': 30,
         'dm_check_timeout': 60,
+        'use_dm_for_trendsetter': False,
+        'cleanup_delay': 5,
         'scoring': {
             'correct_match': 1,
             'bonus_threshold': 8,

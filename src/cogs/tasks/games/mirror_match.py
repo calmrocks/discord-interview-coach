@@ -91,7 +91,15 @@ class MirrorMatch(BaseGame):
     async def trendsetter_phase(self):
         """Handle the trendsetter's question phase"""
         self.game_phase = 'trendsetter'
+        self.messages_to_clean = [] # Track messages to clean up later
 
+        if self._config['use_dm_for_trendsetter']:
+            await self._trendsetter_dm_phase()
+        else:
+            await self._trendsetter_channel_phase()
+
+    async def _trendsetter_dm_phase(self):
+        """Handle trendsetter questions through DMs"""
         await self.channel.send(
             f"{self.trendsetter.mention}, you are the Trendsetter!\n"
             "I'll send you questions in DMs. Please answer them honestly!"
@@ -99,40 +107,88 @@ class MirrorMatch(BaseGame):
 
         try:
             dm_channel = await self.trendsetter.create_dm()
-
-            for i, question in enumerate(self.current_questions, 1):
-                embed = discord.Embed(
-                    title=f"Question {i}/{self._config['num_questions']}",
-                    description=question['question'],
-                    color=discord.Color.blue()
-                )
-
-                view = OptionView(question['options'], self._config['question_timeout'])
-                question_msg = await dm_channel.send(embed=embed, view=view)
-
-                try:
-                    await view.wait()
-                    if view.selected_option is None:
-                        await self.channel.send("Game cancelled - Trendsetter didn't respond in time!")
-                        return await self.end_game(forced=True)
-
-                    self.trendsetter_answers[i] = view.selected_option
-                    await question_msg.edit(
-                        embed=embed.add_field(name="Your answer", value=view.selected_option),
-                        view=None
-                    )
-                except asyncio.TimeoutError:
-                    await self.channel.send("Game cancelled - Trendsetter didn't respond in time!")
-                    return await self.end_game(forced=True)
-
-            await self.channel.send("Trendsetter has completed their answers! Moving to the Followers phase...")
-            await self.followers_phase()
-
+            await self._process_trendsetter_questions(dm_channel)
         except discord.Forbidden:
             await self.channel.send(
                 "Unable to send DM to Trendsetter. Please enable DMs and try again!"
             )
             return await self.end_game(forced=True)
+
+    async def _trendsetter_channel_phase(self):
+        """Handle trendsetter questions in the game channel"""
+        intro_msg = await self.channel.send(
+            f"{self.trendsetter.mention}, you are the Trendsetter!\n"
+            "Answer these questions honestly in this channel.\n"
+            "Other players, please don't scroll up to see the answers during your turn!"
+        )
+        self.messages_to_clean.append(intro_msg)
+
+        await self._process_trendsetter_questions(self.channel)
+
+        # Announce cleanup
+        cleanup_msg = await self.channel.send(
+            f"Trendsetter phase complete! Cleaning up messages in {self._config['cleanup_delay']} seconds..."
+        )
+        self.messages_to_clean.append(cleanup_msg)
+
+        # Wait before cleaning
+        await asyncio.sleep(self._config['cleanup_delay'])
+
+        # Clean up all messages
+        try:
+            await self.channel.delete_messages(self.messages_to_clean)
+        except (discord.HTTPException, discord.NotFound) as e:
+            logger.error(f"Error cleaning up messages: {e}")
+            # If bulk delete fails, try individual deletion
+            for msg in self.messages_to_clean:
+                try:
+                    await msg.delete()
+                except:
+                    pass
+
+        # Start followers phase
+        await self.channel.send("Starting Followers phase...")
+        await self.followers_phase()
+
+    async def _process_trendsetter_questions(self, channel):
+        """Process trendsetter questions in the specified channel"""
+        for i, question in enumerate(self.current_questions, 1):
+            embed = discord.Embed(
+                title=f"Question {i}/{self._config['num_questions']}",
+                description=question['question'],
+                color=discord.Color.blue()
+            )
+
+            view = OptionView(question['options'], self._config['question_timeout'])
+            question_msg = await channel.send(embed=embed, view=view)
+
+            if not self._config['use_dm_for_trendsetter']:
+                self.messages_to_clean.append(question_msg)
+
+            try:
+                await view.wait()
+                if view.selected_option is None:
+                    await self.channel.send("Game cancelled - Trendsetter didn't respond in time!")
+                    return await self.end_game(forced=True)
+
+                self.trendsetter_answers[i] = view.selected_option
+
+                # Update message with answer
+                embed.add_field(name="Your answer", value=view.selected_option)
+                await question_msg.edit(embed=embed, view=None)
+
+                # If in channel, add confirmation message
+                if not self._config['use_dm_for_trendsetter']:
+                    confirm_msg = await channel.send(f"Answer {i} recorded!")
+                    self.messages_to_clean.append(confirm_msg)
+
+            except asyncio.TimeoutError:
+                await self.channel.send("Game cancelled - Trendsetter didn't respond in time!")
+                return await self.end_game(forced=True)
+
+        completion_msg = await channel.send("All questions answered! Moving to next phase...")
+        if not self._config['use_dm_for_trendsetter']:
+            self.messages_to_clean.append(completion_msg)
 
     async def followers_phase(self):
         """Handle the followers' question phase"""
