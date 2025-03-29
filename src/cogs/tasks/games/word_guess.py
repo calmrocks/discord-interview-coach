@@ -1,5 +1,5 @@
 from .base_game import BaseGame
-from .game_config import GAME_CONFIGS
+from src.config.game_config import GAME_CONFIGS
 import discord
 import random
 import logging

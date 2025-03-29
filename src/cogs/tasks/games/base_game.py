@@ -3,7 +3,7 @@ import discord
 from abc import ABC, abstractmethod
 import logging
 import asyncio
-from . import GAME_CONFIGS
+from ....config.game_config import GAME_CONFIGS
 
 logger = logging.getLogger(__name__)
 

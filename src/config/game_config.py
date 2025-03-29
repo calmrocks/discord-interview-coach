@@ -1,8 +1,8 @@
 
 GAME_CONFIGS = {
     'general': {
-        'join_timeout': 60,  # Time in seconds to wait for players to join
-        'cleanup_timeout': 300,  # Time in seconds to keep channel after game ends
+        'join_timeout': 5,  # Time in seconds to wait for players to join
+        'cleanup_timeout': 10,  # Time in seconds to keep channel after game ends
         'question_timeout': 30,  # Time in seconds to wait for question answers
     },
     'truth_dare': {
