@@ -29,13 +29,59 @@ class MirrorMatch(BaseGame):
         self.trendsetter = random.choice(self.players)
         self.current_questions = random.sample(self._config['questions'], 10)
 
-        # Announce game start and roles
-        await self.channel.send(
-            "🎮 **Mirror Match Started!**\n\n"
-            f"👑 **Trendsetter**: {self.trendsetter.mention}\n"
-            f"👥 **Followers**: {', '.join(p.mention for p in self.players if p != self.trendsetter)}\n\n"
-            "The Trendsetter will answer some questions, and Followers will try to match their answers!"
+        # Create and send welcome embed with instructions
+        welcome_embed = discord.Embed(
+            title="🎮 Welcome to Mirror Match!",
+            description="Test how well you can predict others' preferences!",
+            color=discord.Color.blue()
         )
+
+        # Add game roles section
+        welcome_embed.add_field(
+            name="👑 Roles",
+            value=(
+                f"**Trendsetter**: {self.trendsetter.mention}\n"
+                f"**Followers**: {', '.join(p.mention for p in self.players if p != self.trendsetter)}"
+            ),
+            inline=False
+        )
+
+        # Add how to play section
+        welcome_embed.add_field(
+            name="📋 How to Play",
+            value=(
+                "1️⃣ The Trendsetter will receive 10 questions in DMs\n"
+                "2️⃣ They must answer honestly about their preferences\n"
+                "3️⃣ Then, Followers will receive the same questions\n"
+                "4️⃣ Followers try to match what they think the Trendsetter answered\n"
+                "5️⃣ Get points for each correct match!"
+            ),
+            inline=False
+        )
+
+        # Add scoring section
+        welcome_embed.add_field(
+            name="🎯 Scoring",
+            value=(
+                f"• +{self._config['scoring']['correct_match']} point for each correct match\n"
+                f"• Bonus point for getting {self._config['scoring']['bonus_threshold']}+ matches!\n"
+                "• Final scores will be revealed at the end"
+            ),
+            inline=False
+        )
+
+        # Add important notes
+        welcome_embed.add_field(
+            name="⚠️ Important Notes",
+            value=(
+                "• Make sure your DMs are enabled\n"
+                "• Each question has a 30-second time limit\n"
+                "• Have fun and try to think like the Trendsetter!"
+            ),
+            inline=False
+        )
+
+        await self.channel.send(embed=welcome_embed)
 
         # Start the game phases
         await self.trendsetter_phase()
@@ -43,6 +89,18 @@ class MirrorMatch(BaseGame):
     async def trendsetter_phase(self):
         """Handle the trendsetter's question phase"""
         self.game_phase = 'trendsetter'
+
+        dm_reminder = discord.Embed(
+            title="📬 DM Check",
+            description=(
+                f"{self.trendsetter.mention}, you'll receive questions in your DMs.\n"
+                "If you don't receive them, make sure:\n"
+                "1. Your DMs are enabled for this server\n"
+                "2. You haven't blocked the bot"
+            ),
+            color=discord.Color.yellow()
+        )
+        await self.channel.send(embed=dm_reminder)
 
         await self.channel.send(
             f"{self.trendsetter.mention}, you are the Trendsetter!\n"
@@ -95,6 +153,19 @@ class MirrorMatch(BaseGame):
         self.game_phase = 'followers'
 
         followers = [p for p in self.players if p != self.trendsetter]
+
+        dm_reminder = discord.Embed(
+            title="📬 Followers' Turn",
+            description=(
+                "Followers will now receive questions in DMs.\n"
+                "Remember:\n"
+                "• Try to match the Trendsetter's answers\n"
+                "• Each question has a 30-second time limit\n"
+                "• You can't change your answer once submitted"
+            ),
+            color=discord.Color.green()
+        )
+        await self.channel.send(embed=dm_reminder)
 
         await self.channel.send(
             "🎯 **Followers Phase Started!**\n"
