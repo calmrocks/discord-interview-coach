@@ -141,6 +141,14 @@ GAME_CONFIGS = {
         'description': 'Match the Trendsetter\'s preferences to score points!',
         'min_players': 1,
         'max_players': 8,
+        'num_questions': 3,
+        'question_timeout': 30,
+        'dm_check_timeout': 60,
+        'scoring': {
+            'correct_match': 1,
+            'bonus_threshold': 8,
+            'bonus_points': 1
+        },
         'questions': [
             # Lifestyle Preferences
             {
@@ -259,11 +267,6 @@ GAME_CONFIGS = {
                 'question': 'Save money or Spend now?',
                 'options': ['Save', 'Spend']
             }
-        ],
-        'scoring': {
-            'correct_match': 1,
-            'perfect_score': 5,
-            'bonus_threshold': 8  # Bonus point if player gets 8 or more correct
-        }
+        ]
     }
 }

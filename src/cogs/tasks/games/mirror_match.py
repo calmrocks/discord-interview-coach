@@ -19,7 +19,7 @@ class MirrorMatch(BaseGame):
         self.player_answers = {}
         self.scores = {player.id: 0 for player in players}
         self.current_questions = []
-        self.game_phase = 'setup'  # setup, trendsetter, followers, ended
+        self.game_phase = 'setup'
 
     async def start_game(self):
         """Initialize and start the Mirror Match game"""
@@ -27,7 +27,10 @@ class MirrorMatch(BaseGame):
 
         # Select random trendsetter
         self.trendsetter = random.choice(self.players)
-        self.current_questions = random.sample(self._config['questions'], 10)
+        self.current_questions = random.sample(
+            self._config['questions'],
+            self._config['num_questions']
+        )
 
         # Create and send welcome embed with instructions
         welcome_embed = discord.Embed(
@@ -50,7 +53,7 @@ class MirrorMatch(BaseGame):
         welcome_embed.add_field(
             name="📋 How to Play",
             value=(
-                "1️⃣ The Trendsetter will receive 10 questions in DMs\n"
+                f"1️⃣ The Trendsetter will receive {self._config['num_questions']} questions in DMs\n"
                 "2️⃣ They must answer honestly about their preferences\n"
                 "3️⃣ Then, Followers will receive the same questions\n"
                 "4️⃣ Followers try to match what they think the Trendsetter answered\n"
@@ -64,7 +67,8 @@ class MirrorMatch(BaseGame):
             name="🎯 Scoring",
             value=(
                 f"• +{self._config['scoring']['correct_match']} point for each correct match\n"
-                f"• Bonus point for getting {self._config['scoring']['bonus_threshold']}+ matches!\n"
+                f"• Bonus {self._config['scoring']['bonus_points']} points for getting "
+                f"{self._config['scoring']['bonus_threshold']}+ matches!\n"
                 "• Final scores will be revealed at the end"
             ),
             inline=False
@@ -75,55 +79,37 @@ class MirrorMatch(BaseGame):
             name="⚠️ Important Notes",
             value=(
                 "• Make sure your DMs are enabled\n"
-                "• Each question has a 30-second time limit\n"
+                f"• Each question has a {self._config['question_timeout']}-second time limit\n"
                 "• Have fun and try to think like the Trendsetter!"
             ),
             inline=False
         )
 
         await self.channel.send(embed=welcome_embed)
-
-        # Start the game phases
         await self.trendsetter_phase()
 
     async def trendsetter_phase(self):
         """Handle the trendsetter's question phase"""
         self.game_phase = 'trendsetter'
 
-        dm_reminder = discord.Embed(
-            title="📬 DM Check",
-            description=(
-                f"{self.trendsetter.mention}, you'll receive questions in your DMs.\n"
-                "If you don't receive them, make sure:\n"
-                "1. Your DMs are enabled for this server\n"
-                "2. You haven't blocked the bot"
-            ),
-            color=discord.Color.yellow()
-        )
-        await self.channel.send(embed=dm_reminder)
-
         await self.channel.send(
             f"{self.trendsetter.mention}, you are the Trendsetter!\n"
-            "I'll send you 10 questions in DMs. Please answer them honestly!"
+            "I'll send you questions in DMs. Please answer them honestly!"
         )
 
         try:
-            # Send questions to trendsetter via DM
             dm_channel = await self.trendsetter.create_dm()
 
             for i, question in enumerate(self.current_questions, 1):
-                # Create and send question embed
                 embed = discord.Embed(
-                    title=f"Question {i}/10",
+                    title=f"Question {i}/{self._config['num_questions']}",
                     description=question['question'],
                     color=discord.Color.blue()
                 )
 
-                # Create button view for options
-                view = OptionView(question['options'])
+                view = OptionView(question['options'], self._config['question_timeout'])
                 question_msg = await dm_channel.send(embed=embed, view=view)
 
-                # Wait for trendsetter's answer
                 try:
                     await view.wait()
                     if view.selected_option is None:
@@ -154,22 +140,10 @@ class MirrorMatch(BaseGame):
 
         followers = [p for p in self.players if p != self.trendsetter]
 
-        dm_reminder = discord.Embed(
-            title="📬 Followers' Turn",
-            description=(
-                "Followers will now receive questions in DMs.\n"
-                "Remember:\n"
-                "• Try to match the Trendsetter's answers\n"
-                "• Each question has a 30-second time limit\n"
-                "• You can't change your answer once submitted"
-            ),
-            color=discord.Color.green()
-        )
-        await self.channel.send(embed=dm_reminder)
-
         await self.channel.send(
             "🎯 **Followers Phase Started!**\n"
             "Each follower will receive the same questions in DMs.\n"
+            f"You have {self._config['question_timeout']} seconds to answer each question.\n"
             "Try to match what you think the Trendsetter answered!"
         )
 
@@ -183,14 +157,13 @@ class MirrorMatch(BaseGame):
                 )
 
                 for i, question in enumerate(self.current_questions, 1):
-                    # Create and send question embed
                     embed = discord.Embed(
-                        title=f"Question {i}/10",
+                        title=f"Question {i}/{self._config['num_questions']}",
                         description=question['question'],
                         color=discord.Color.green()
                     )
 
-                    view = OptionView(question['options'])
+                    view = OptionView(question['options'], self._config['question_timeout'])
                     question_msg = await dm_channel.send(embed=embed, view=view)
 
                     try:
@@ -205,7 +178,7 @@ class MirrorMatch(BaseGame):
                             view=None
                         )
                     except asyncio.TimeoutError:
-                        await self.channel.send(f"{follower.mention} didn't respond in time!")
+                        await self.channel.send(f"{follower.mention} didn't respond in time for question {i}!")
                         continue
 
                 await dm_channel.send("You've completed all questions! Wait for others to finish...")
@@ -235,27 +208,27 @@ class MirrorMatch(BaseGame):
                     self.scores[follower.id] += self._config['scoring']['correct_match']
 
             # Add bonus points if applicable
+            bonus_awarded = False
             if correct_answers >= self._config['scoring']['bonus_threshold']:
-                self.scores[follower.id] += 1
+                self.scores[follower.id] += self._config['scoring']['bonus_points']
                 bonus_awarded = True
-            else:
-                bonus_awarded = False
 
             # Send individual results to each player
             try:
                 dm_channel = await follower.create_dm()
                 embed = discord.Embed(
                     title="Your Results",
-                    description=f"You matched {correct_answers}/10 answers!",
+                    description=(
+                        f"You matched {correct_answers}/{self._config['num_questions']} answers!\n"
+                        f"Base points: {correct_answers * self._config['scoring']['correct_match']}\n"
+                        f"Bonus points: {self._config['scoring']['bonus_points'] if bonus_awarded else 0}\n"
+                        f"Total points: {self.scores[follower.id]}"
+                    ),
                     color=discord.Color.blue()
-                )
-                embed.add_field(
-                    name="Points Earned",
-                    value=f"{self.scores[follower.id]} points" + (" (including bonus!)" if bonus_awarded else "")
                 )
                 await dm_channel.send(embed=embed)
             except discord.Forbidden:
-                pass
+                logger.warning(f"Could not send results DM to {follower.name}")
 
         # Display final leaderboard
         await self.show_leaderboard()
@@ -264,7 +237,10 @@ class MirrorMatch(BaseGame):
         """Display the final leaderboard and trendsetter's answers"""
         embed = discord.Embed(
             title="🏆 Mirror Match Results",
-            description="Here's how well everyone did at matching the Trendsetter!",
+            description=(
+                "Game Over! Here's how well everyone did at matching "
+                f"{self.trendsetter.name}'s preferences!"
+            ),
             color=discord.Color.gold()
         )
 
@@ -276,19 +252,27 @@ class MirrorMatch(BaseGame):
         )
 
         # Add leaderboard to embed
-        leaderboard = "\n".join(
-            f"{idx+1}. {player.name}: {score} points"
-            for idx, (player, score) in enumerate(sorted_scores)
+        leaderboard_text = ""
+        for idx, (player, score) in enumerate(sorted_scores, 1):
+            medal = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else "➖"
+            bonus = score >= self._config['scoring']['bonus_threshold']
+            leaderboard_text += f"{medal} {player.name}: {score} points {' ⭐' if bonus else ''}\n"
+
+        embed.add_field(
+            name="📊 Final Scores",
+            value=leaderboard_text or "No scores available",
+            inline=False
         )
-        embed.add_field(name="📊 Leaderboard", value=leaderboard or "No scores", inline=False)
 
         # Add Trendsetter's answers
-        trendsetter_answers = "\n".join(
-            f"Q{q}: {ans}" for q, ans in self.trendsetter_answers.items()
-        )
+        answers_text = ""
+        for q_num, answer in self.trendsetter_answers.items():
+            question = self.current_questions[q_num - 1]['question']
+            answers_text += f"Q{q_num}: {question}\n➡️ {answer}\n\n"
+
         embed.add_field(
             name=f"👑 {self.trendsetter.name}'s Answers",
-            value=trendsetter_answers,
+            value=answers_text,
             inline=False
         )
 
@@ -297,19 +281,9 @@ class MirrorMatch(BaseGame):
         # End the game
         await self.end_game()
 
-    async def end_game(self, forced=False):
-        """End the game and clean up"""
-        if not forced:
-            await self.channel.send(
-                "Thanks for playing Mirror Match!\n"
-                f"This channel will be deleted in {self.cleanup_timeout} seconds."
-            )
-
-        await super().end_game(forced=forced)
-
 class OptionView(discord.ui.View):
-    def __init__(self, options: List[str]):
-        super().__init__(timeout=30.0)
+    def __init__(self, options: List[str], timeout: int):
+        super().__init__(timeout=timeout)
         self.selected_option = None
 
         # Create a button for each option
