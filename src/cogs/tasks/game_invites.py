@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, time
 from ...utils.task_scheduler import BaseScheduledTask
 from ...config.task_config import TASK_CONFIG
-from .games import AVAILABLE_GAMES
+from .games import AVAILABLE_GAMES, GAME_CONFIGS
 import logging
 import asyncio
 
@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 class GameSelectView(discord.ui.View):
     def __init__(self, cog):
-        super().__init__(timeout=60)
+        timeout = GAME_CONFIGS['general']['join_timeout']
+        super().__init__(timeout=timeout)
         self.cog = cog
         self.bot = cog.bot
-        logger.debug("Initializing GameSelectView")
+        logger.debug(f"Initializing GameSelectView with {timeout}s timeout")
         self.add_game_buttons()
 
     def add_game_buttons(self):
@@ -116,17 +117,18 @@ class GameSelectView(discord.ui.View):
 
             # If not max players, show waiting message
             players_needed = temp_game.min_players - current_players
+            timeout = GAME_CONFIGS['general']['join_timeout']
             if players_needed > 0:
                 await interaction.response.send_message(
                     f"You've joined! Need {players_needed} more player(s) to start.\n"
                     f"Current: {current_players}/{temp_game.max_players} players\n"
-                    "Game will start in 60 seconds if minimum players is reached.",
+                    f"Game will start in {timeout} seconds if minimum players is reached.",
                     ephemeral=True
                 )
             else:
                 await interaction.response.send_message(
                     f"You've joined! ({current_players}/{temp_game.max_players} players)\n"
-                    "Game will start in 60 seconds!",
+                    f"Game will start in {timeout} seconds!",
                     ephemeral=True
                 )
 
@@ -151,9 +153,10 @@ class GameInvites(commands.Cog, BaseScheduledTask):
         logger.info(f"Creating game invite in channel: {channel.name}")
 
         try:
+            timeout = GAME_CONFIGS['general']['join_timeout']
             embed = discord.Embed(
                 title="🎮 Let's Play a Game!",
-                description="Choose a game to play!\nInvite expires in 60 seconds.",
+                description=f"Choose a game to play!\nInvite expires in {timeout} seconds.",
                 color=discord.Color.blue()
             )
 
@@ -197,7 +200,8 @@ class GameInvites(commands.Cog, BaseScheduledTask):
 
     async def check_invite_status(self, message_id):
         """Check invite status after 60 seconds"""
-        await asyncio.sleep(60)  # Wait 60 seconds
+        timeout = GAME_CONFIGS['general']['join_timeout']
+        await asyncio.sleep(timeout)  # Wait 60 seconds
 
         invite = self.active_invites.get(message_id)
         if not invite:

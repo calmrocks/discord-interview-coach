@@ -3,6 +3,7 @@ import discord
 from abc import ABC, abstractmethod
 import logging
 import asyncio
+from . import GAME_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class BaseGame(ABC):
         self.channel = None
         self.start_time = None
         self.is_active = False
-        self.cleanup_timeout = 300  # 5 minutes default
+        self.cleanup_timeout = GAME_CONFIGS['general']['cleanup_timeout']
         self._config = None
 
     @property

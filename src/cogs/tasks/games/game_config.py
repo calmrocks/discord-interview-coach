@@ -1,5 +1,10 @@
 
 GAME_CONFIGS = {
+    'general': {
+        'join_timeout': 60,  # Time in seconds to wait for players to join
+        'cleanup_timeout': 300,  # Time in seconds to keep channel after game ends
+        'question_timeout': 30,  # Time in seconds to wait for question answers
+    },
     'truth_dare': {
         'name': 'Truth or Dare',
         'description': 'Classic Truth or Dare game!',
