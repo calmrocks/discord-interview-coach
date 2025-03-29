@@ -89,5 +89,27 @@ COMMAND_PREFIX=!
 ```
 python run.py
 ```
+## Game Modules - Proprietary Notice
 
+⚠️ **CONFIDENTIAL AND PROPRIETARY**
 
+The game modules in this repository are protected by copyright and trade secret laws. These games, including but not limited to:
+- Game mechanics
+- Question banks
+- Scoring algorithms
+- Role distribution systems
+- Player interaction patterns
+
+are confidential and proprietary information of the author.
+
+### Protection Measures:
+- All game logic is distributed in compiled form only
+- Game configurations are encrypted
+- Server-side validation required for game operations
+- Unique authentication tokens for each licensed instance
+- Activity monitoring and unauthorized use detection
+
+### Legal Notice:
+Unauthorized access, reproduction, or distribution of these game modules is strictly prohibited and may result in legal action. All rights reserved.
+
+For licensing inquiries: [connectactlearnmanifest@gmail.com]
