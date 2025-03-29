@@ -6,6 +6,7 @@ TASK_CONFIG = {
         'enabled': True,
         'test_user_ids': TEST_USER_IDS,
         'loop_minutes': 5,
+        'allow_multiple_daily': True,
         'schedule': {
             'type': 'all_hours',
             'minute_window': 60  # run within first 30 minutes of each hour

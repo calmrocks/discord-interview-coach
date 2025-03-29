@@ -1,0 +1,34 @@
+{
+  "streak_bonuses": [
+    {
+      "days": 3,
+      "bonus_coins": 100
+    },
+    {
+      "days": 7,
+      "bonus_coins": 300
+    },
+    {
+      "days": 14,
+      "bonus_coins": 700
+    },
+    {
+      "days": 30,
+      "bonus_coins": 1500
+    }
+  ],
+  "freeze_day_rules": [
+    {
+      "condition": "reach_level_2",
+      "freeze_days_awarded": 1
+    },
+    {
+      "condition": "complete_10_activities",
+      "freeze_days_awarded": 2
+    },
+    {
+      "condition": "30_day_streak",
+      "freeze_days_awarded": 3
+    }
+  ]
+}

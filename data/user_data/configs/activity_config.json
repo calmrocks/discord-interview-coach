@@ -1,0 +1,38 @@
+{
+  "activities": {
+    "daily_check_in": {
+      "base_coins": 50,
+      "streak_multiplier": {
+        "3_days": 1.1,
+        "7_days": 1.2,
+        "14_days": 1.3,
+        "30_days": 1.5
+      }
+    },
+    "coding_practice": {
+      "base_coins": 100,
+      "difficulty_multiplier": {
+        "easy": 1.0,
+        "medium": 1.5,
+        "hard": 2.0
+      }
+    },
+    "interview_practice": {
+      "base_coins": 150,
+      "duration_multiplier": {
+        "30_minutes": 1.0,
+        "60_minutes": 1.5,
+        "90_minutes": 2.0
+      }
+    },
+    "system_design_study": {
+      "base_coins": 200
+    },
+    "resume_review": {
+      "base_coins": 100
+    },
+    "mock_interview": {
+      "base_coins": 300
+    }
+  }
+}
