@@ -3,14 +3,12 @@ from .bot_config import DAILY_TIPS_CHANNEL_IDS, GAME_CHANNELS_IDS, TEST_USER_IDS
 
 TASK_CONFIG = {
     'randomquestions': {
-        'enabled': False,
+        'enabled': True,
         'test_user_ids': TEST_USER_IDS,
-        'loop_minutes': 30,
+        'loop_minutes': 5,
         'schedule': {
-            'type': 'business_hours',  # business_hours, specific_hours, or daily
-            'hours': [9, 17],  # start and end hours for business_hours
-            'minute_window': 30,  # run within first 30 minutes of each hour
-            'interval': 240  # minutes (4 hours)
+            'type': 'all_hours',
+            'minute_window': 60  # run within first 30 minutes of each hour
         }
     },
     'dailytips': {

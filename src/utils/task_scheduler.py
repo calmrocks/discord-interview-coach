@@ -129,29 +129,29 @@ class BaseScheduledTask:
                     return False
 
         # Check if current time falls within the scheduled window
-        if schedule_type == 'business_hours':
+        if schedule_type == 'all_hours':
+            # Always return True for 'all_hours', but still respect the interval
+            pass
+        elif schedule_type == 'business_hours':
             if len(hours) != 2:
                 return False
             start_hour, end_hour = hours
             if not (start_hour <= current_hour < end_hour):
                 return False
-
         elif schedule_type == 'daily':
             if len(hours) != 1:
                 return False
             if current_hour != hours[0]:
                 return False
-
         elif schedule_type == 'specific_hours':
             if current_hour not in hours:
                 logger.info(f"[{task_name}] Current hour {current_hour} not in target hours {hours}")
                 return False
-
         else:
             return False
 
-        # Check minute window
-        if current_minute >= minute_window:
+        # Check minute window (skip for 'all_hours')
+        if schedule_type != 'all_hours' and current_minute >= minute_window:
             logger.info(f"[{task_name}] Current minute {current_minute} outside window {minute_window}")
             return False
 
