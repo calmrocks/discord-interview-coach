@@ -130,5 +130,135 @@ GAME_CONFIGS = {
             'skip_allowed': True,       # Whether skipping is allowed
             'case_sensitive': False     # Whether guesses are case sensitive
         }
+    },
+    'mirror_match': {
+        'name': 'Mirror Match',
+        'description': 'Match the Trendsetter\'s preferences to score points!',
+        'min_players': 1,
+        'max_players': 8,
+        'questions': [
+            # Lifestyle Preferences
+            {
+                'question': 'Do you prefer tea or coffee?',
+                'options': ['Tea', 'Coffee']
+            },
+            {
+                'question': 'Are you a morning person or night owl?',
+                'options': ['Morning person', 'Night owl']
+            },
+            {
+                'question': 'Do you prefer working from home or office?',
+                'options': ['Home', 'Office']
+            },
+
+            # Entertainment
+            {
+                'question': 'Movies: Action or Comedy?',
+                'options': ['Action', 'Comedy']
+            },
+            {
+                'question': 'Gaming: Single player or Multiplayer?',
+                'options': ['Single player', 'Multiplayer']
+            },
+            {
+                'question': 'Music: Live concerts or Studio recordings?',
+                'options': ['Live concerts', 'Studio recordings']
+            },
+
+            # Food & Dining
+            {
+                'question': 'Do you prefer spicy or mild food?',
+                'options': ['Spicy', 'Mild']
+            },
+            {
+                'question': 'Sweet or Savory snacks?',
+                'options': ['Sweet', 'Savory']
+            },
+            {
+                'question': 'Fast food or Fine dining?',
+                'options': ['Fast food', 'Fine dining']
+            },
+
+            # Social Preferences
+            {
+                'question': 'Small gatherings or Big parties?',
+                'options': ['Small gatherings', 'Big parties']
+            },
+            {
+                'question': 'Text or Call?',
+                'options': ['Text', 'Call']
+            },
+            {
+                'question': 'Plan ahead or Go with the flow?',
+                'options': ['Plan ahead', 'Go with the flow']
+            },
+
+            # Travel & Adventure
+            {
+                'question': 'Beach vacation or Mountain retreat?',
+                'options': ['Beach', 'Mountain']
+            },
+            {
+                'question': 'International or Domestic travel?',
+                'options': ['International', 'Domestic']
+            },
+            {
+                'question': 'Hotel or Camping?',
+                'options': ['Hotel', 'Camping']
+            },
+
+            # Shopping
+            {
+                'question': 'Online shopping or In-store shopping?',
+                'options': ['Online', 'In-store']
+            },
+            {
+                'question': 'Brand names or Budget friendly?',
+                'options': ['Brand names', 'Budget friendly']
+            },
+
+            # Technology
+            {
+                'question': 'iOS or Android?',
+                'options': ['iOS', 'Android']
+            },
+            {
+                'question': 'Desktop or Laptop?',
+                'options': ['Desktop', 'Laptop']
+            },
+
+            # Lifestyle
+            {
+                'question': 'City life or Countryside?',
+                'options': ['City', 'Countryside']
+            },
+            {
+                'question': 'Early dinner or Late dinner?',
+                'options': ['Early', 'Late']
+            },
+            {
+                'question': 'Read news online or Traditional newspaper?',
+                'options': ['Online news', 'Traditional newspaper']
+            },
+
+            # Personal Habits
+            {
+                'question': 'Shower in morning or Evening?',
+                'options': ['Morning', 'Evening']
+            },
+            {
+                'question': 'Exercise indoor or Outdoor?',
+                'options': ['Indoor', 'Outdoor']
+            },
+            {
+                'question': 'Save money or Spend now?',
+                'options': ['Save', 'Spend']
+            }
+        ],
+        'scoring': {
+            'correct_match': 1,
+            'perfect_score': 5,
+            'bonus_threshold': 8  # Bonus point if player gets 8 or more correct
+        }
     }
 }
