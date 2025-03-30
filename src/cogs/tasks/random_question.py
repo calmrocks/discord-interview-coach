@@ -1,4 +1,5 @@
 from discord.ext import commands
+from discord import Embed
 from discord import Status
 from datetime import datetime, timedelta
 import asyncio
@@ -154,6 +155,45 @@ Current streak: {streak}
 Reward: {daily_reward - 20} -> {daily_reward} 🪙
 """
 
+        return message
+
+    @commands.command(name="streak")
+    async def show_streak(self, ctx):
+        """Show the current streak and level information for the user."""
+        user_id = str(ctx.author.id)
+        user_profile = await self.data_provider.get_user_profile(user_id)
+        streak = user_profile['current_streak']['count']
+
+        streak_message = await self.generate_streak_message(user_id, streak)
+
+        # Create an embed for a nicer looking message
+        embed = Embed(title="Your Streak Information", description=streak_message, color=0x00ff00)
+
+        await ctx.send(embed=embed)
+
+    async def generate_streak_message(self, user_id: str, streak: int):
+        user_profile = await self.data_provider.get_user_profile(user_id)
+        level_config = await self.data_provider.get_level_config()
+
+        current_level = next(level for level in level_config['levels'] if level['coins_required'] <= user_profile['total_coins'])
+        next_level = next((level for level in level_config['levels'] if level['coins_required'] > user_profile['total_coins']), None)
+
+        daily_reward = current_level['daily_reward']
+        next_reward = next_level['daily_reward'] if next_level else daily_reward
+
+        progress = min(user_profile['total_coins'] - current_level['coins_required'], 6)
+        total_levels = len(level_config['levels'])
+        progress_bar = f"{progress}{'🟩' * progress}{'🟥' * (6 - progress)}{next_level['coins_required'] - current_level['coins_required'] if next_level else ''}"
+
+        message = f"""
+🔥 Current Streak: {streak} day{'s' if streak != 1 else ''}
+💰 Total Coins: {user_profile['total_coins']}
+🏆 Current Level: {current_level['level']}/{total_levels} ({current_level['title']})
+🎁 Daily Reward: {daily_reward} 🪙
+📊 Progress to Next Level:
+{progress_bar}
+🚀 Next Level Reward: {next_reward} 🪙 daily
+"""
         return message
 
 async def setup(bot):
