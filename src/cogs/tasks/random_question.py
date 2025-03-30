@@ -1,9 +1,8 @@
+import logging
 from discord.ext import commands
-from discord import Embed
-from discord import Status
+from discord import Embed, Status
 from datetime import datetime, timedelta
 import asyncio
-import logging
 from ...utils.task_scheduler import BaseScheduledTask
 from ...config.task_config import TASK_CONFIG
 from ...providers.data_provider import DataProvider
@@ -21,12 +20,6 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         self.allow_multiple_daily = TASK_CONFIG['randomquestions'].get('allow_multiple_daily', False)
         self.sent_messages = {}
 
-    def cog_unload(self):
-        self.task_loop.cancel()
-
-    def get_task_config(self):
-        return TASK_CONFIG['randomquestions']
-
     async def execute(self):
         """Send daily check-in to online subscribed users"""
         current_date = datetime.now().date()
@@ -38,19 +31,13 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
                 logger.warning(f"User with ID {user_id} not found")
                 continue
 
-            # Check if user is a member of any guild the bot is in
-            member = None
-            for guild in self.bot.guilds:
-                member = guild.get_member(int(user_id))
-                if member:
-                    break
-
-            # If we couldn't find the member or they're offline, skip
+            member = self.find_member(user_id)
             if not member or member.status == Status.offline:
                 logger.info(f"User {user.name} (ID: {user_id}) is offline or not found in any shared guild")
                 continue
 
             user_profile = await self.data_provider.get_user_profile(user_id)
+            logger.debug(f"User profile for {user_id}: {user_profile}")
 
             if not self.allow_multiple_daily and user_profile.get('last_check_in_date') == current_date.isoformat():
                 logger.info(f"User {user.name} (ID: {user_id}) already received a check-in today")
@@ -65,15 +52,12 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
             logger.info(f"Sending check-in to user {user.name} (ID: {user_id})")
             message = await self.ask_daily_question(user)
 
-            def check(reaction, reactor):
-                return reactor.id == int(user_id) and str(reaction.emoji)[0] in "123456"
-
             try:
-                reaction, _ = await self.bot.wait_for('reaction_add', timeout=300, check=check)
+                reaction, _ = await self.bot.wait_for('reaction_add', timeout=300, check=lambda r, u: u.id == int(user_id) and str(r.emoji)[0] in "123456")
                 await self.add_points(user_id, 50)
                 streak = await self.update_user_streak(user_id)
-                streak_message = await self.generate_streak_message(user_id, streak)
-                await user.send(streak_message)
+                logger.info(f"Updated streak for user {user_id}: {streak}")
+                await self.send_streak_message(user, user_id, streak, "Daily Check-in")
 
                 user_profile['last_check_in_date'] = current_date.isoformat()
                 await self.data_provider.save_user_profile(user_profile)
@@ -84,6 +68,13 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
             except asyncio.TimeoutError:
                 await user.send("You didn't respond to the check-in. No worries, we'll check in with you later!")
                 logger.info(f"User {user.name} (ID: {user_id}) did not respond to check-in")
+
+    def find_member(self, user_id):
+        for guild in self.bot.guilds:
+            member = guild.get_member(int(user_id))
+            if member:
+                return member
+        return None
 
     async def ask_daily_question(self, user):
         question = "What positive step did you take for your SDE career today? 🚀"
@@ -106,6 +97,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
     async def add_points(self, user_id: str, points: int):
         user_profile = await self.data_provider.get_user_profile(user_id)
         user_profile['total_coins'] += points
+        logger.info(f"Added {points} points to user {user_id}. New total: {user_profile['total_coins']}")
         await self.data_provider.save_user_profile(user_profile)
 
     async def update_user_streak(self, user_id: str):
@@ -122,6 +114,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         user_profile['current_streak']['last_activity_date'] = current_date.isoformat()
 
         await self.data_provider.save_user_profile(user_profile)
+        logger.info(f"Updated streak for user {user_id}: {user_profile['current_streak']}")
 
         return user_profile['current_streak']['count']
 
@@ -129,51 +122,8 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         user_profile = await self.data_provider.get_user_profile(user_id)
         level_config = await self.data_provider.get_level_config()
 
-        current_level = next(level for level in level_config['levels'] if level['coins_required'] <= user_profile['total_coins'])
-        next_level = next((level for level in level_config['levels'] if level['coins_required'] > user_profile['total_coins']), None)
-
-        daily_reward = current_level['daily_reward']
-        next_reward = next_level['daily_reward'] if next_level else daily_reward
-
-        progress = min(user_profile['total_coins'] - current_level['coins_required'], 6)
-        progress_bar = f"{progress}{'🟩' * progress}{'🟥' * (6 - progress)}{next_level['coins_required'] - current_level['coins_required'] if next_level else ''}"
-
-        message = f"""
-🔥 Streak: {streak}
-Current: {daily_reward} 🪙 daily
-Next: {next_reward} 🪙 daily
-{progress_bar}
-You extended your streak! 
-Current streak: {streak}
-Reward: {daily_reward} 🪙
-Type !streak for more information.
-"""
-        if streak % 7 == 0:  # Upgrade every week
-            message += f"""
-You upgraded the daily reward! 
-Current streak: {streak}
-Reward: {daily_reward - 20} -> {daily_reward} 🪙
-"""
-
-        return message
-
-    @commands.command(name="streak")
-    async def show_streak(self, ctx):
-        """Show the current streak and level information for the user."""
-        user_id = str(ctx.author.id)
-        user_profile = await self.data_provider.get_user_profile(user_id)
-        streak = user_profile['current_streak']['count']
-
-        streak_message = await self.generate_streak_message(user_id, streak)
-
-        # Create an embed for a nicer looking message
-        embed = Embed(title="Your Streak Information", description=streak_message, color=0x00ff00)
-
-        await ctx.send(embed=embed)
-
-    async def generate_streak_message(self, user_id: str, streak: int):
-        user_profile = await self.data_provider.get_user_profile(user_id)
-        level_config = await self.data_provider.get_level_config()
+        logger.debug(f"User profile for streak message: {user_profile}")
+        logger.debug(f"Level config: {level_config}")
 
         current_level = next(level for level in level_config['levels'] if level['coins_required'] <= user_profile['total_coins'])
         next_level = next((level for level in level_config['levels'] if level['coins_required'] > user_profile['total_coins']), None)
@@ -181,9 +131,18 @@ Reward: {daily_reward - 20} -> {daily_reward} 🪙
         daily_reward = current_level['daily_reward']
         next_reward = next_level['daily_reward'] if next_level else daily_reward
 
-        progress = min(user_profile['total_coins'] - current_level['coins_required'], 6)
         total_levels = len(level_config['levels'])
-        progress_bar = f"{progress}{'🟩' * progress}{'🟥' * (6 - progress)}{next_level['coins_required'] - current_level['coins_required'] if next_level else ''}"
+
+        if next_level:
+            progress = user_profile['total_coins'] - current_level['coins_required']
+            total_for_next_level = next_level['coins_required'] - current_level['coins_required']
+            progress_percentage = min(progress / total_for_next_level, 1)
+            filled_squares = int(progress_percentage * 6)
+            progress_bar = f"{'🟩' * filled_squares}{'🟥' * (6 - filled_squares)}"
+        else:
+            progress_bar = "🟩🟩🟩🟩🟩🟩"  # Max level reached
+
+        logger.debug(f"Progress bar calculation: progress={progress}, total_for_next_level={total_for_next_level}, percentage={progress_percentage}, filled_squares={filled_squares}")
 
         message = f"""
 🔥 Current Streak: {streak} day{'s' if streak != 1 else ''}
@@ -194,7 +153,29 @@ Reward: {daily_reward - 20} -> {daily_reward} 🪙
 {progress_bar}
 🚀 Next Level Reward: {next_reward} 🪙 daily
 """
+        if streak % 7 == 0:  # Upgrade every week
+            message += f"""
+🎉 You upgraded the daily reward! 
+New daily reward: {daily_reward} 🪙
+"""
+        logger.debug(f"Generated streak message for user {user_id}: {message}")
         return message
+
+    async def send_streak_message(self, user, user_id: str, streak: int, context: str):
+        streak_message = await self.generate_streak_message(user_id, streak)
+        embed = Embed(title=f"Your Streak Information ({context})", description=streak_message, color=0x00ff00)
+        await user.send(embed=embed)
+        logger.info(f"Sent streak message to user {user_id} for {context}")
+
+    @commands.command(name="streak")
+    async def show_streak(self, ctx):
+        """Show the current streak and level information for the user."""
+        user_id = str(ctx.author.id)
+        user_profile = await self.data_provider.get_user_profile(user_id)
+        streak = user_profile['current_streak']['count']
+        logger.info(f"User {user_id} requested streak information. user_profile: {user_profile}")
+        logger.info(f"User {user_id} requested streak information. Current streak: {streak}")
+        await self.send_streak_message(ctx.author, user_id, streak, "Command")
 
 async def setup(bot):
     await bot.add_cog(RandomQuestions(bot))
