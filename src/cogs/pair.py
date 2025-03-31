@@ -85,51 +85,83 @@ class PairInterview(commands.Cog):
         guild = message.guild
         category_name = f"Interview-{user1.name}-{user2.name}"
 
-        # Set up permissions for the category
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user1: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-            user2: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, manage_channels=True)
-        }
+        try:
+            # Set up permissions for the category
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                user1: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+                user2: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True, manage_channels=True)
+            }
 
-        # Create category
-        category = await guild.create_category(category_name, overwrites=overwrites)
+            # Create category
+            category = await guild.create_category(category_name, overwrites=overwrites)
 
-        # Create voice channel
-        voice_channel = await category.create_voice_channel(
-            "🎙️interview-voice",
-            user_limit=2
-        )
+            # Create voice channel
+            voice_channel = await category.create_voice_channel(
+                "🎙️interview-voice",
+                user_limit=2
+            )
 
-        # Create text channel
-        text_channel = await category.create_text_channel("📝interview-chat")
+            # Create text channel
+            text_channel = await category.create_text_channel("📝interview-chat")
 
-        # Store interview session info
-        self.active_interviews[category.id] = {
-            'category': category,
-            'voice_channel': voice_channel,
-            'text_channel': text_channel,
-            'user1': user1,
-            'user2': user2,
-            'created_at': datetime.now()
-        }
+            # Store interview session info
+            self.active_interviews[category.id] = {
+                'category': category,
+                'voice_channel': voice_channel,
+                'text_channel': text_channel,
+                'user1': user1,
+                'user2': user2,
+                'created_at': datetime.now()
+            }
 
-        # Send welcome message with instructions
-        welcome_embed = discord.Embed(
-            title="🎯 Interview Session Started",
-            description=(
-                f"Welcome {user1.mention} and {user2.mention}!\n\n"
-                f"**Voice Channel:** {voice_channel.mention}\n"
-                f"**Text Channel:** {text_channel.mention}\n\n"
-                f"**Commands:**\n"
-                f"`!stop` - End the interview (5 minute countdown)\n"
-                f"`!extend` - Add 30 more minutes\n\n"
-                f"This session will automatically end after 2 hours if not stopped."
-            ),
-            color=discord.Color.green()
-        )
-        await text_channel.send(embed=welcome_embed)
+            # Move users to voice channel if they're in a voice channel
+            for user in [user1, user2]:
+                try:
+                    # Get member object instead of user
+                    member = guild.get_member(user.id)
+                    if member and member.voice and member.voice.channel:
+                        await member.move_to(voice_channel)
+                except Exception as e:
+                    logger.error(f"Failed to move {user.name} to voice channel: {e}")
+
+            # Send welcome message with instructions and mentions
+            welcome_embed = discord.Embed(
+                title="🎯 Interview Session Started",
+                description=(
+                    f"Welcome {user1.mention} and {user2.mention}!\n\n"
+                    f"**Voice Channel:** {voice_channel.mention}\n"
+                    f"**Text Channel:** {text_channel.mention}\n\n"
+                    f"**Commands:**\n"
+                    f"`!stop` - End the interview (5 minute countdown)\n"
+                    f"`!extend` - Add 30 more minutes\n\n"
+                    f"This session will automatically end after 2 hours if not stopped."
+                ),
+                color=discord.Color.green()
+            )
+
+            # Send initial message and ping both users
+            initial_msg = await text_channel.send(f"{user1.mention} {user2.mention} Your interview session is ready!")
+            await text_channel.send(embed=welcome_embed)
+
+            # Send voice channel join prompt
+            voice_prompt = await text_channel.send(
+                f"🎤 Click here to join the voice channel: {voice_channel.mention}\n"
+                f"Please join the voice channel to begin your interview!"
+            )
+
+            return category, voice_channel, text_channel
+
+        except Exception as e:
+            logger.error(f"Error in creating interview channels: {e}")
+            # Clean up if something goes wrong
+            try:
+                if 'category' in locals():
+                    await category.delete()
+            except:
+                pass
+            raise
 
     @commands.command(name="stop")
     async def stop_interview(self, ctx):
@@ -154,8 +186,9 @@ class PairInterview(commands.Cog):
             # Wait 5 minutes
             await asyncio.sleep(300)
 
-            # Delete the category and all channels
+            # Explicitly cleanup everything
             await self._cleanup_interview(category_id)
+            logger.info(f"Interview session {category_id} stopped and cleaned up")
 
         except Exception as e:
             logger.error(f"Error stopping interview: {str(e)}", exc_info=True)
@@ -180,6 +213,28 @@ class PairInterview(commands.Cog):
             logger.error(f"Error extending interview: {str(e)}", exc_info=True)
             await ctx.send("❌ An error occurred while extending the interview.")
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Track when users join/leave interview voice channels"""
+        try:
+            # Check if this is related to an interview voice channel
+            for interview in self.active_interviews.values():
+                if member in [interview['user1'], interview['user2']]:
+                    voice_channel = interview['voice_channel']
+                    text_channel = interview['text_channel']
+
+                    # If user joined the interview voice channel
+                    if after.channel and after.channel.id == voice_channel.id:
+                        await text_channel.send(f"✅ {member.mention} joined the voice channel!")
+
+                    # If user left the interview voice channel
+                    elif before.channel and before.channel.id == voice_channel.id:
+                        await text_channel.send(f"ℹ️ {member.mention} left the voice channel!")
+
+                    break
+        except Exception as e:
+            logger.error(f"Error in voice state update handler: {e}")
+
     def _is_user_busy(self, user_id):
         """Check if user has pending or active interviews"""
         # Check pending requests
@@ -201,11 +256,36 @@ class PairInterview(commands.Cog):
 
         interview = self.active_interviews[category_id]
         try:
-            await interview['category'].delete()
-        except:
-            pass
+            # Delete text channel first
+            try:
+                await interview['text_channel'].delete()
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.error(f"Error deleting text channel: {e}")
 
-        del self.active_interviews[category_id]
+            # Delete voice channel
+            try:
+                await interview['voice_channel'].delete()
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.error(f"Error deleting voice channel: {e}")
+
+            # Finally delete the category
+            try:
+                await interview['category'].delete()
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.error(f"Error deleting category: {e}")
+
+            logger.info(f"Successfully cleaned up interview session {category_id}")
+        except Exception as e:
+            logger.error(f"Error in cleanup: {str(e)}")
+        finally:
+            # Always remove from active interviews
+            del self.active_interviews[category_id]
 
     async def cleanup_old_sessions(self):
         """Cleanup old sessions periodically"""
@@ -225,6 +305,7 @@ class PairInterview(commands.Cog):
                 # Clean up old interview sessions
                 for category_id, interview in list(self.active_interviews.items()):
                     if (current_time - interview['created_at']) > timedelta(hours=2):
+                        logger.info(f"Cleaning up old interview session {category_id}")
                         await self._cleanup_interview(category_id)
 
             except Exception as e:
