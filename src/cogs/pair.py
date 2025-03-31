@@ -1,327 +1,238 @@
-import discord
 from discord.ext import commands
-from datetime import datetime, timedelta
+import discord
 import asyncio
-from ..utils.embed_builder import EmbedBuilder
+import logging
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 class PairInterview(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.embed_builder = EmbedBuilder()
-        self.active_requests = {}  # Store active pair interview requests
-        self.active_pairs = {}  # Store active interview pairs
+        self.pending_pairs = {}  # Store pending pair requests
+        self.active_interviews = {}  # Store active interview sessions
 
-    @commands.command(name='pair')
+    @commands.command(name="pair")
     async def pair_interview(self, ctx):
-        """
-        Start a paired mock interview session.
-        Usage: !pair
-        Find a partner for a mock interview practice session.
-        """
-        if ctx.author.id in self.active_requests:
-            await ctx.send("You already have an active pair interview request!")
-            return
-
-        # Create interview type selection
-        embed = self.embed_builder.create_interview_type_selection()
-        selection_msg = await ctx.send(
-            f"{ctx.author.mention} Please select the type of interview you want to practice:",
-            embed=embed
-        )
-
-        # Add reaction options
-        reactions = ['💻', '👥', '📊']  # Technical, Behavioral, System Design
-        for reaction in reactions:
-            await selection_msg.add_reaction(reaction)
-
+        """Start a pair interview request"""
         try:
-            # Wait for user's interview type selection
-            reaction, user = await self.bot.wait_for(
-                'reaction_add',
-                timeout=30.0,
-                check=lambda r, u: u == ctx.author and str(r.emoji) in reactions
-            )
+            # Check if user already has a pending request or active interview
+            if self._is_user_busy(ctx.author.id):
+                await ctx.send("❌ You already have a pending or active interview session!")
+                return
 
-            interview_type = {
-                '💻': 'technical',
-                '👥': 'behavioral',
-                '📊': 'system_design'
-            }[str(reaction.emoji)]
-
-            # Create level selection
-            level_embed = discord.Embed(
-                title="Select Experience Level",
-                description="🟢 Entry Level\n🟡 Mid Level\n🔴 Senior Level",
+            embed = discord.Embed(
+                title="🤝 Pair Interview Request",
+                description=f"{ctx.author.mention} is looking for a pair interview partner!\n\n"
+                            f"React with ✋ to join this interview.\n"
+                            f"This request will expire in 5 minutes.",
                 color=discord.Color.blue()
             )
-            level_msg = await ctx.send(
-                f"{ctx.author.mention} Please select your experience level:",
-                embed=level_embed
-            )
 
-            # Add reaction options for level
-            level_reactions = ['🟢', '🟡', '🔴']
-            for reaction in level_reactions:
-                await level_msg.add_reaction(reaction)
+            message = await ctx.send(embed=embed)
+            await message.add_reaction("✋")
 
-            # Wait for user's level selection
-            reaction, user = await self.bot.wait_for(
-                'reaction_add',
-                timeout=30.0,
-                check=lambda r, u: u == ctx.author and str(r.emoji) in level_reactions
-            )
-
-            level = {
-                '🟢': 'entry',
-                '🟡': 'mid',
-                '🔴': 'senior'
-            }[str(reaction.emoji)]
-
-            # Create and send pair request
-            await self.create_pair_request(ctx, interview_type, level)
-
-        except asyncio.TimeoutError:
-            await ctx.send(f"{ctx.author.mention} Interview setup timed out. Please try again!")
-        finally:
-            try:
-                await selection_msg.delete()
-                await level_msg.delete()
-            except:
-                pass
-
-    async def create_pair_request(self, ctx, interview_type: str, level: str):
-        """Create and send a pair interview request"""
-        expiration_time = datetime.utcnow() + timedelta(minutes=30)
-
-        embed = discord.Embed(
-            title="Mock Interview Partner Needed! 🤝",
-            description=(
-                f"**Type:** {interview_type.title()} Interview\n"
-                f"**Level:** {level.title()} Level\n"
-                f"**Requester:** {ctx.author.name}\n\n"
-                "React with ✋ to volunteer as the interviewer!\n\n"
-                f"This request will expire in 30 minutes ({expiration_time.strftime('%H:%M')} UTC)"
-            ),
-            color=discord.Color.green()
-        )
-        embed.add_field(
-            name="How it works",
-            value=(
-                "1. Volunteer by reacting with ✋\n"
-                "2. Both participants will be paired in a private channel\n"
-                "3. Bot will provide interview questions and guidelines\n"
-                "4. Take turns interviewing each other"
-            )
-        )
-
-        request_msg = await ctx.send(embed=embed)
-        await request_msg.add_reaction("✋")
-
-        # Store the request details
-        self.active_requests[ctx.author.id] = {
-            "message": request_msg,
-            "type": interview_type,
-            "level": level,
-            "channel": ctx.channel,
-            "expiration": expiration_time
-        }
-
-        # Start expiration timer
-        self.bot.loop.create_task(self.expire_request(ctx.author.id, request_msg, expiration_time))
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
-        """Handle volunteer reactions for pair interviews"""
-        if user.bot or str(reaction.emoji) != "✋":
-            return
-
-        # Find the corresponding request
-        requester_id = None
-        for rid, request in self.active_requests.items():
-            if request["message"].id == reaction.message.id:
-                requester_id = rid
-                break
-
-        if not requester_id or user.id == requester_id:
-            return
-
-        request_data = self.active_requests[requester_id]
-
-        # Create private channel for the pair
-        try:
-            # Create private channel
-            overwrites = {
-                reaction.message.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                reaction.message.guild.me: discord.PermissionOverwrite(read_messages=True),
-                reaction.message.guild.get_member(requester_id): discord.PermissionOverwrite(read_messages=True),
-                user: discord.PermissionOverwrite(read_messages=True)
+            # Store the pair request
+            self.pending_pairs[message.id] = {
+                'initiator': ctx.author,
+                'message': message,
+                'created_at': datetime.now()
             }
 
-            channel_name = f"mock-interview-{requester_id}-{user.id}"
-            private_channel = await reaction.message.guild.create_text_channel(
-                channel_name,
-                overwrites=overwrites,
-                category=reaction.message.channel.category
-            )
-
-            # Send initial instructions
-            await self.send_interview_instructions(
-                private_channel,
-                request_data["type"],
-                request_data["level"],
-                reaction.message.guild.get_member(requester_id),
-                user
-            )
-
-            # Clean up the request
-            await request_data["message"].delete()
-            del self.active_requests[requester_id]
-
-            # Store the active pair
-            self.active_pairs[private_channel.id] = {
-                "requester": requester_id,
-                "volunteer": user.id,
-                "type": request_data["type"],
-                "level": request_data["level"],
-                "start_time": datetime.utcnow()
-            }
+            # Wait for 5 minutes then clean up if no one joined
+            await asyncio.sleep(300)
+            if message.id in self.pending_pairs:
+                await message.delete()
+                del self.pending_pairs[message.id]
+                try:
+                    await ctx.send(f"⏰ Pair interview request from {ctx.author.mention} has expired.")
+                except:
+                    pass
 
         except Exception as e:
-            await request_data["channel"].send(
-                f"Error creating interview channel: {str(e)}\n"
-                "Please try again or contact an administrator."
-            )
+            logger.error(f"Error creating pair request: {str(e)}", exc_info=True)
+            await ctx.send("❌ An error occurred while creating the pair request.")
 
-    async def send_interview_instructions(self, channel, interview_type: str, level: str, requester: discord.Member, volunteer: discord.Member):
-        """Send instructions and initial questions to the private channel"""
-        welcome_embed = discord.Embed(
-            title="Mock Interview Session Started! 🎯",
-            description=(
-                f"Welcome to your paired mock interview session!\n\n"
-                f"**Type:** {interview_type.title()}\n"
-                f"**Level:** {level.title()}\n"
-                f"**Participants:**\n"
-                f"• {requester.mention}\n"
-                f"• {volunteer.mention}\n\n"
-                "Please decide who will be the interviewer first."
-            ),
-            color=discord.Color.blue()
-        )
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        """Handle reactions to pair requests"""
+        if user.bot:
+            return
 
-        # Add commands section
-        welcome_embed.add_field(
-            name="Available Commands",
-            value=(
-                "`!next` - Get the next interview question\n"
-                "`!switch` - Switch interviewer/interviewee roles\n"
-                "`!end` - End the interview session\n"
-                "`!feedback` - Provide feedback to your partner"
-            ),
-            inline=False
-        )
+        message = reaction.message
+        if message.id not in self.pending_pairs:
+            return
 
-        # Add guidelines
-        welcome_embed.add_field(
-            name="Guidelines",
-            value=(
-                "1. Be respectful and professional\n"
-                "2. Provide constructive feedback\n"
-                "3. Stay in character (interviewer/interviewee)\n"
-                "4. Take notes for feedback\n"
-                "5. Each person should practice both roles"
-            ),
-            inline=False
-        )
+        pair_info = self.pending_pairs[message.id]
+        if user == pair_info['initiator']:
+            return
 
-        await channel.send(embed=welcome_embed)
-
-        # Send first question
-        question = self.get_practice_question(interview_type, level)
-        question_embed = discord.Embed(
-            title="First Interview Question",
-            description=question,
-            color=discord.Color.green()
-        )
-        await channel.send(embed=question_embed)
-
-    async def expire_request(self, user_id: int, message: discord.Message, expiration_time: datetime):
-        """Handle request expiration"""
-        await discord.utils.sleep_until(expiration_time)
-
-        if user_id in self.active_requests:
+        if str(reaction.emoji) == "✋":
             try:
+                # Create interview category and channels
+                await self._create_interview_channels(message, pair_info['initiator'], user)
+
+                # Clean up the pair request
                 await message.delete()
-            except:
-                pass
-            del self.active_requests[user_id]
+                del self.pending_pairs[message.id]
 
-    @commands.command(name='next')
-    async def next_question(self, ctx):
-        """Get the next interview question"""
-        if ctx.channel.id not in self.active_pairs:
-            return
+            except Exception as e:
+                logger.error(f"Error creating interview channels: {str(e)}", exc_info=True)
+                await message.channel.send("❌ An error occurred while creating the interview channels.")
 
-        pair_data = self.active_pairs[ctx.channel.id]
-        question = self.get_practice_question(pair_data["type"], pair_data["level"])
+    async def _create_interview_channels(self, message, user1, user2):
+        """Create a category with voice and text channels for the interview"""
+        guild = message.guild
+        category_name = f"Interview-{user1.name}-{user2.name}"
 
-        embed = discord.Embed(
-            title="Next Interview Question",
-            description=question,
+        # Set up permissions for the category
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user1: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+            user2: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, manage_channels=True)
+        }
+
+        # Create category
+        category = await guild.create_category(category_name, overwrites=overwrites)
+
+        # Create voice channel
+        voice_channel = await category.create_voice_channel(
+            "🎙️interview-voice",
+            user_limit=2
+        )
+
+        # Create text channel
+        text_channel = await category.create_text_channel("📝interview-chat")
+
+        # Store interview session info
+        self.active_interviews[category.id] = {
+            'category': category,
+            'voice_channel': voice_channel,
+            'text_channel': text_channel,
+            'user1': user1,
+            'user2': user2,
+            'created_at': datetime.now()
+        }
+
+        # Send welcome message with instructions
+        welcome_embed = discord.Embed(
+            title="🎯 Interview Session Started",
+            description=(
+                f"Welcome {user1.mention} and {user2.mention}!\n\n"
+                f"**Voice Channel:** {voice_channel.mention}\n"
+                f"**Text Channel:** {text_channel.mention}\n\n"
+                f"**Commands:**\n"
+                f"`!stop` - End the interview (5 minute countdown)\n"
+                f"`!extend` - Add 30 more minutes\n\n"
+                f"This session will automatically end after 2 hours if not stopped."
+            ),
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await text_channel.send(embed=welcome_embed)
 
-    @commands.command(name='switch')
-    async def switch_roles(self, ctx):
-        """Switch interviewer/interviewee roles"""
-        if ctx.channel.id not in self.active_pairs:
-            return
-
-        embed = discord.Embed(
-            title="Switching Roles! 🔄",
-            description=(
-                "Time to switch roles!\n\n"
-                "Previous interviewer is now the interviewee.\n"
-                "Previous interviewee is now the interviewer.\n\n"
-                "Use `!next` to get a new question for this round."
-            ),
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name='end')
-    async def end_session(self, ctx):
-        """End the interview session"""
-        if ctx.channel.id not in self.active_pairs:
-            return
-
-        embed = discord.Embed(
-            title="Interview Session Ended",
-            description=(
-                "This mock interview session has ended.\n"
-                "Please use `!feedback` to provide feedback to your partner.\n"
-                "The channel will be deleted in 5 minutes after feedback is shared."
-            ),
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed)
-
-        # Schedule channel deletion
-        self.bot.loop.create_task(self.delete_interview_channel(ctx.channel, 300))  # 300 seconds = 5 minutes
-        del self.active_pairs[ctx.channel.id]
-
-    async def delete_interview_channel(self, channel: discord.TextChannel, delay: int):
-        """Delete the interview channel after a delay"""
-        await asyncio.sleep(delay)
+    @commands.command(name="stop")
+    async def stop_interview(self, ctx):
+        """Stop an active interview"""
         try:
-            await channel.delete()
+            # Check if this is an interview text channel
+            category_id = ctx.channel.category_id
+            if not category_id or category_id not in self.active_interviews:
+                return
+
+            interview = self.active_interviews[category_id]
+            if ctx.author not in [interview['user1'], interview['user2']]:
+                return
+
+            embed = discord.Embed(
+                title="🛑 Interview Ending",
+                description="This interview session will end in 5 minutes.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed)
+
+            # Wait 5 minutes
+            await asyncio.sleep(300)
+
+            # Delete the category and all channels
+            await self._cleanup_interview(category_id)
+
+        except Exception as e:
+            logger.error(f"Error stopping interview: {str(e)}", exc_info=True)
+            await ctx.send("❌ An error occurred while stopping the interview.")
+
+    @commands.command(name="extend")
+    async def extend_interview(self, ctx):
+        """Extend the interview time by 30 minutes"""
+        try:
+            category_id = ctx.channel.category_id
+            if not category_id or category_id not in self.active_interviews:
+                return
+
+            interview = self.active_interviews[category_id]
+            if ctx.author not in [interview['user1'], interview['user2']]:
+                return
+
+            interview['created_at'] = datetime.now()  # Reset the timer
+            await ctx.send("✅ Interview time extended by 30 minutes!")
+
+        except Exception as e:
+            logger.error(f"Error extending interview: {str(e)}", exc_info=True)
+            await ctx.send("❌ An error occurred while extending the interview.")
+
+    def _is_user_busy(self, user_id):
+        """Check if user has pending or active interviews"""
+        # Check pending requests
+        for pair_info in self.pending_pairs.values():
+            if user_id in [pair_info['initiator'].id]:
+                return True
+
+        # Check active interviews
+        for interview in self.active_interviews.values():
+            if user_id in [interview['user1'].id, interview['user2'].id]:
+                return True
+
+        return False
+
+    async def _cleanup_interview(self, category_id):
+        """Clean up an interview session"""
+        if category_id not in self.active_interviews:
+            return
+
+        interview = self.active_interviews[category_id]
+        try:
+            await interview['category'].delete()
         except:
             pass
 
-    def get_practice_question(self, interview_type: str, level: str) -> str:
-        """Get a practice question from the question provider"""
-        # You can reuse your existing question provider here
-        return "Sample question for now - integrate with your question provider"
+        del self.active_interviews[category_id]
+
+    async def cleanup_old_sessions(self):
+        """Cleanup old sessions periodically"""
+        while True:
+            try:
+                current_time = datetime.now()
+
+                # Clean up old pending requests
+                for message_id, pair_info in list(self.pending_pairs.items()):
+                    if (current_time - pair_info['created_at']) > timedelta(minutes=5):
+                        try:
+                            await pair_info['message'].delete()
+                        except:
+                            pass
+                        del self.pending_pairs[message_id]
+
+                # Clean up old interview sessions
+                for category_id, interview in list(self.active_interviews.items()):
+                    if (current_time - interview['created_at']) > timedelta(hours=2):
+                        await self._cleanup_interview(category_id)
+
+            except Exception as e:
+                logger.error(f"Error in cleanup task: {str(e)}")
+
+            await asyncio.sleep(300)  # Check every 5 minutes
 
 async def setup(bot):
-    await bot.add_cog(PairInterview(bot))
+    cog = PairInterview(bot)
+    await bot.add_cog(cog)
+    bot.loop.create_task(cog.cleanup_old_sessions())
