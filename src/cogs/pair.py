@@ -3,6 +3,8 @@ import discord
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from src.utils.question_loader import QuestionLoader
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +13,7 @@ class PairInterview(commands.Cog):
         self.bot = bot
         self.pending_pairs = {}  # Store pending pair requests
         self.active_interviews = {}  # Store active interview sessions
+        self.question_loader = QuestionLoader()
 
     @commands.command(name="pair")
     async def pair_interview(self, ctx):
@@ -55,30 +58,68 @@ class PairInterview(commands.Cog):
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
-        """Handle reactions to pair requests"""
+        """Handle reactions to pair requests and question type selection"""
         if user.bot:
             return
 
         message = reaction.message
-        if message.id not in self.pending_pairs:
+        # Handle pair request reactions
+        if message.id in self.pending_pairs:
+            if user == self.pending_pairs[message.id]['initiator']:
+                return
+
+            if str(reaction.emoji) == "✋":
+                try:
+                    # Create interview channels
+                    await self._create_interview_channels(message, self.pending_pairs[message.id]['initiator'], user)
+
+                    # Clean up the pair request
+                    await message.delete()
+                    del self.pending_pairs[message.id]
+
+                except Exception as e:
+                    logger.error(f"Error creating interview channels: {str(e)}", exc_info=True)
+                    await message.channel.send("❌ An error occurred while creating the interview channels.")
             return
 
-        pair_info = self.pending_pairs[message.id]
-        if user == pair_info['initiator']:
-            return
+        # Handle question type selection
+        category_id = message.channel.category_id
+        if category_id in self.active_interviews:
+            interview = self.active_interviews[category_id]
+            if 'pending_selection' in interview and message.id == interview['pending_selection']['message_id']:
+                # Check if this is one of our interview type emojis
+                if str(reaction.emoji) in self.question_loader.INTERVIEW_TYPE_EMOJIS:
+                    interview_type = self.question_loader.INTERVIEW_TYPE_EMOJIS[str(reaction.emoji)]
 
-        if str(reaction.emoji) == "✋":
-            try:
-                # Create interview category and channels
-                await self._create_interview_channels(message, pair_info['initiator'], user)
+                    # Send difficulty selection
+                    difficulty_embed = await self.question_loader.create_difficulty_selection_embed()
+                    diff_msg = await message.channel.send(embed=difficulty_embed)
 
-                # Clean up the pair request
-                await message.delete()
-                del self.pending_pairs[message.id]
+                    # Update pending selection
+                    interview['pending_selection'] = {
+                        'message_id': diff_msg.id,
+                        'type': 'difficulty',
+                        'interview_type': interview_type
+                    }
 
-            except Exception as e:
-                logger.error(f"Error creating interview channels: {str(e)}", exc_info=True)
-                await message.channel.send("❌ An error occurred while creating the interview channels.")
+                    # Add difficulty reactions
+                    for emoji in self.question_loader.DIFFICULTY_EMOJIS:
+                        await diff_msg.add_reaction(emoji)
+
+                    # Delete the type selection message
+                    await message.delete()
+
+                # Handle difficulty selection
+                elif str(reaction.emoji) in self.question_loader.DIFFICULTY_EMOJIS:
+                    difficulty = self.question_loader.DIFFICULTY_EMOJIS[str(reaction.emoji)]
+                    interview_type = interview['pending_selection']['interview_type']
+
+                    # Delete the difficulty selection message
+                    await message.delete()
+                    del interview['pending_selection']
+
+                    # Send question with selected type and difficulty
+                    await self._send_question(message.channel, interview, interview_type, difficulty)
 
     async def _create_interview_channels(self, message, user1, user2):
         """Create a category with voice and text channels for the interview"""
@@ -113,13 +154,14 @@ class PairInterview(commands.Cog):
                 'text_channel': text_channel,
                 'user1': user1,
                 'user2': user2,
-                'created_at': datetime.now()
+                'created_at': datetime.now(),
+                'current_question': None,  # Track current question
+                'asked_questions': set()    # Track asked questions
             }
 
             # Move users to voice channel if they're in a voice channel
             for user in [user1, user2]:
                 try:
-                    # Get member object instead of user
                     member = guild.get_member(user.id)
                     if member and member.voice and member.voice.channel:
                         await member.move_to(voice_channel)
@@ -131,17 +173,23 @@ class PairInterview(commands.Cog):
                 title="🎯 Interview Session Started",
                 description=(
                     f"Welcome {user1.mention} and {user2.mention}!\n\n"
-                    f"**Voice Channel:** {voice_channel.mention}\n"
-                    f"**Text Channel:** {text_channel.mention}\n\n"
-                    f"**Commands:**\n"
+                    f"**Channels:**\n"
+                    f"🎙️ Voice: {voice_channel.mention}\n"
+                    f"💬 Text: {text_channel.mention}\n\n"
+                    f"**Interview Commands:**\n"
+                    f"`!question` - Get an interview question (will show type options)\n"
+                    f"`!question <type>` - Get a specific type question\n"
+                    f"  Types: technical, behavioral, system_design\n"
+                    f"`!next` - Get next question of same type\n"
                     f"`!stop` - End the interview (5 minute countdown)\n"
                     f"`!extend` - Add 30 more minutes\n\n"
+                    f"Example: `!question technical`\n\n"
                     f"This session will automatically end after 2 hours if not stopped."
                 ),
                 color=discord.Color.green()
             )
 
-            # Send initial message and ping both users
+            # Send initial messages
             initial_msg = await text_channel.send(f"{user1.mention} {user2.mention} Your interview session is ready!")
             await text_channel.send(embed=welcome_embed)
 
@@ -150,6 +198,28 @@ class PairInterview(commands.Cog):
                 f"🎤 Click here to join the voice channel: {voice_channel.mention}\n"
                 f"Please join the voice channel to begin your interview!"
             )
+
+            # Send question type examples
+            question_types_embed = discord.Embed(
+                title="📚 Question Types Available",
+                description=(
+                    "**Technical Interview:**\n"
+                    "• Algorithms and Data Structures\n"
+                    "• Coding Problems\n"
+                    "• Database Design\n\n"
+                    "**System Design:**\n"
+                    "• Architecture Design\n"
+                    "• Scalability\n"
+                    "• System Components\n\n"
+                    "**Behavioral:**\n"
+                    "• Past Experiences\n"
+                    "• Leadership\n"
+                    "• Problem Solving\n\n"
+                    "Use `!question <type> <level>` to start!"
+                ),
+                color=discord.Color.blue()
+            )
+            await text_channel.send(embed=question_types_embed)
 
             return category, voice_channel, text_channel
 
@@ -212,6 +282,87 @@ class PairInterview(commands.Cog):
         except Exception as e:
             logger.error(f"Error extending interview: {str(e)}", exc_info=True)
             await ctx.send("❌ An error occurred while extending the interview.")
+
+    @commands.command(name="question")
+    async def get_interview_question(self, ctx, question_type: str = None):
+        """Get a random interview question based on type"""
+        try:
+            # Check if this is an interview text channel
+            category_id = ctx.channel.category_id
+            if not category_id or category_id not in self.active_interviews:
+                return
+
+            interview = self.active_interviews[category_id]
+            if ctx.author not in [interview['user1'], interview['user2']]:
+                return
+
+            # If type not specified, show available options
+            if not question_type:
+                # Send type selection
+                type_embed = await self.question_loader.create_type_selection_embed()
+                type_msg = await ctx.send(embed=type_embed)
+
+                # Store the message for reaction handling
+                interview['pending_selection'] = {
+                    'message_id': type_msg.id
+                }
+
+                # Add reaction options
+                for emoji in self.question_loader.get_interview_type_emojis():
+                    await type_msg.add_reaction(emoji)
+                return
+
+            # If type is specified directly
+            await self._send_question(ctx, interview, question_type.lower(), "medium")  # Default to medium difficulty
+
+        except Exception as e:
+            logger.error(f"Error getting interview question: {str(e)}", exc_info=True)
+            await ctx.send("❌ An error occurred while getting the question.")
+
+    async def _send_question(self, ctx, interview, question_type: str, level: str = "medium"):
+        """Send a question for discussion"""
+        question = await self.question_loader.get_random_question(question_type, level)
+        if not question:
+            await ctx.send("❌ No questions found for the specified type.")
+            return
+
+        # Store current question
+        interview['current_question'] = question
+        interview['asked_questions'].add(question.get('id', ''))
+
+        # Create and send embed
+        embed = await self.question_loader.create_question_embed(question_type, level, question)
+        await ctx.send(embed=embed)
+
+        # Send a follow-up message with instructions
+        await ctx.send("💭 Discuss your answer in the voice channel. Use `!next` when you're ready for another question.")
+
+    @commands.command(name="next")
+    async def next_question(self, ctx):
+        """Get the next question of the same type and level"""
+        try:
+            category_id = ctx.channel.category_id
+            if not category_id or category_id not in self.active_interviews:
+                return
+
+            interview = self.active_interviews[category_id]
+            if ctx.author not in [interview['user1'], interview['user2']]:
+                return
+
+            current_question = interview.get('current_question')
+            if not current_question:
+                await ctx.send("❌ No active question. Use `!question <type> <level>` to start.")
+                return
+
+            question_type = current_question.get('type')
+            level = current_question.get('difficulty')
+
+            # Get and send next question
+            await self._send_question(ctx, interview, question_type, level)
+
+        except Exception as e:
+            logger.error(f"Error getting next question: {str(e)}", exc_info=True)
+            await ctx.send("❌ An error occurred while getting the next question.")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):

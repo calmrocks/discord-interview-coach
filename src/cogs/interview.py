@@ -1,9 +1,9 @@
 from discord.ext import commands
 import logging
 import discord
-from src.utils.embed_builder import EmbedBuilder
 from ..services.interview_service import InterviewService
-
+from src.utils.question_loader import QuestionLoader
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG)
 class Interview(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.embed_builder = EmbedBuilder()
+        self.question_loader = QuestionLoader()
         self.interview_service = InterviewService()
         self.pending_selection: Dict[int, Tuple[discord.Message, str]] = {}
 
@@ -30,8 +30,8 @@ class Interview(commands.Cog):
             await ctx.author.send("Welcome to Discord Interview Coach! Starting your session...")
             await ctx.send(f"{ctx.author.mention} Check your DMs to start the interview!")
 
-            # Create selection embed
-            embed = self.embed_builder.create_interview_type_selection()
+            # Create selection embed using QuestionLoader
+            embed = await self.question_loader.create_type_selection_embed()
             selection_msg = await ctx.author.send(embed=embed)
 
             # Store message and selection type
@@ -50,7 +50,7 @@ class Interview(commands.Cog):
 
     async def send_difficulty_selection(self, user: discord.User):
         """Send difficulty selection message"""
-        embed = self.embed_builder.create_difficulty_selection()
+        embed = await self.question_loader.create_difficulty_selection_embed()
         difficulty_msg = await user.send(embed=embed)
 
         # Store message and selection type
@@ -72,31 +72,17 @@ class Interview(commands.Cog):
             return
 
         if selection_type == "type":
-            # Handle interview type selection
-            reaction_types = {
-                '💻': 'technical',
-                '👥': 'behavioral',
-                '📊': 'system_design'
-            }
-
-            if str(reaction.emoji) in reaction_types:
-                interview_type = reaction_types[str(reaction.emoji)]
+            interview_type = self.question_loader.get_interview_type_from_reaction(str(reaction.emoji))
+            if interview_type:
                 self.interview_service.create_session(user.id, interview_type)
-                await selection_msg.delete()  # Clean up the selection message
+                await selection_msg.delete()
                 await self.send_difficulty_selection(user)
 
         elif selection_type == "difficulty":
-            # Handle difficulty selection
-            difficulty_levels = {
-                '🟢': 'easy',
-                '🟡': 'medium',
-                '🔴': 'hard'
-            }
-
-            if str(reaction.emoji) in difficulty_levels:
-                difficulty = difficulty_levels[str(reaction.emoji)]
+            difficulty = self.question_loader.get_difficulty_from_reaction(str(reaction.emoji))
+            if difficulty:
                 self.interview_service.set_difficulty(user.id, difficulty)
-                await selection_msg.delete()  # Clean up the selection message
+                await selection_msg.delete()
                 del self.pending_selection[user.id]
                 await self.start_interview_question(user)
 
@@ -106,7 +92,7 @@ class Interview(commands.Cog):
             question_data = await self.interview_service.get_next_question(user.id)
             if question_data:
                 session = self.interview_service.get_session(user.id)
-                embed = self.embed_builder.create_question_embed(
+                embed = await self.question_loader.create_question_embed(
                     session.interview_type,
                     session.difficulty,
                     question_data
@@ -175,7 +161,19 @@ class Interview(commands.Cog):
             await ctx.send("No active interview sessions.")
             return
 
-        embed = self.embed_builder.create_active_sessions_embed(active_sessions)
+        # Create active sessions embed
+        embed = discord.Embed(
+            title="Active Interview Sessions",
+            color=discord.Color.blue()
+        )
+
+        for session in active_sessions:
+            embed.add_field(
+                name=f"User: {session.user_id}",
+                value=f"Type: {session.interview_type}\nDifficulty: {session.difficulty}\nStatus: {session.status}",
+                inline=False
+            )
+
         await ctx.send(embed=embed)
 
     def create_summary_embed(self, summary):
