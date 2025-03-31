@@ -25,50 +25,76 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         current_date = datetime.now().date()
         current_time = datetime.now()
 
+        logger.info(f"Starting daily check-in execution for {len(self.test_user_ids)} users")
+
         for user_id in self.test_user_ids:
-            user_id = str(user_id)
-            user = self.bot.get_user(int(user_id))
-            if not user:
-                logger.warning(f"User with ID {user_id} not found")
-                continue
+            try:
+                user_id = str(user_id)
+                logger.info(f"Processing user_id: {user_id}")
 
-            member = self.find_member(user_id)
-            if not member or member.status == Status.offline:
-                logger.info(f"User {user.name} (ID: {user_id}) is offline or not found in any shared guild")
-                continue
-
-            user_profile = await self.data_provider.get_user_profile(user_id)
-            logger.debug(f"User profile for {user_id}: {user_profile}")
-
-            if not self.allow_multiple_daily and user_profile.get('last_check_in_date') == current_date.isoformat():
-                logger.info(f"User {user.name} (ID: {user_id}) already received a check-in today")
-                continue
-
-            if self.allow_multiple_daily:
-                last_sent = self.sent_messages.get(user_id)
-                if last_sent and (current_time - last_sent) < timedelta(hours=1):
-                    logger.info(f"Skipping user {user.name} (ID: {user_id}) due to recent message")
+                user = self.bot.get_user(int(user_id))
+                if not user:
+                    logger.warning(f"User with ID {user_id} not found")
                     continue
 
-            logger.info(f"Sending check-in to user {user.name} (ID: {user_id})")
-            message = await self.ask_daily_question(user)
+                member = self.find_member(user_id)
+                if not member or member.status == Status.offline:
+                    logger.info(f"User {user.name} (ID: {user_id}) is offline or not found in any shared guild")
+                    continue
 
-            try:
-                reaction, _ = await self.bot.wait_for('reaction_add', timeout=300, check=lambda r, u: u.id == int(user_id) and str(r.emoji)[0] in "123456")
-                await self.add_points(user_id, 50)
-                streak = await self.update_user_streak(user_id)
-                logger.info(f"Updated streak for user {user_id}: {streak}")
-                await self.send_streak_message(user, user_id, streak, "Daily Check-in")
+                user_profile = await self.data_provider.get_user_profile(user_id)
+                logger.debug(f"User profile for {user_id}: {user_profile}")
 
-                user_profile['last_check_in_date'] = current_date.isoformat()
-                await self.data_provider.save_user_profile(user_profile)
+                if not self.allow_multiple_daily and user_profile.get('last_check_in_date') == current_date.isoformat():
+                    logger.info(f"User {user.name} (ID: {user_id}) already received a check-in today")
+                    continue
 
-                self.sent_messages[user_id] = current_time
-                logger.info(f"User {user.name} (ID: {user_id}) responded to check-in")
+                if self.allow_multiple_daily:
+                    last_sent = self.sent_messages.get(user_id)
+                    if last_sent and (current_time - last_sent) < timedelta(hours=1):
+                        logger.info(f"Skipping user {user.name} (ID: {user_id}) due to recent message")
+                        continue
 
-            except asyncio.TimeoutError:
-                await user.send("You didn't respond to the check-in. No worries, we'll check in with you later!")
-                logger.info(f"User {user.name} (ID: {user_id}) did not respond to check-in")
+                logger.info(f"Sending check-in to user {user.name} (ID: {user_id})")
+                message = await self.ask_daily_question(user)
+
+                try:
+                    reaction, _ = await self.bot.wait_for(
+                        'reaction_add',
+                        timeout=300,
+                        check=lambda r, u: u.id == int(user_id) and str(r.emoji)[0] in "123456"
+                    )
+
+                    # Get fresh user profile before modifications
+                    user_profile = await self.data_provider.get_user_profile(user_id)
+
+                    # Update coins
+                    user_profile['total_coins'] += 50
+                    await self.data_provider.save_user_profile(user_profile)
+
+                    # Update streak
+                    streak = await self.update_user_streak(user_id)
+
+                    # Update last check-in date
+                    user_profile = await self.data_provider.get_user_profile(user_id)
+                    user_profile['last_check_in_date'] = current_date.isoformat()
+                    await self.data_provider.save_user_profile(user_profile)
+
+                    logger.info(f"Updated streak for user {user_id}: {streak}")
+                    await self.send_streak_message(user, user_id, streak, "Daily Check-in")
+
+                    self.sent_messages[user_id] = current_time
+                    logger.info(f"User {user.name} (ID: {user_id}) responded to check-in")
+
+                except asyncio.TimeoutError:
+                    await user.send("You didn't respond to the check-in. No worries, we'll check in with you later!")
+                    logger.info(f"User {user.name} (ID: {user_id}) did not respond to check-in")
+
+            except Exception as e:
+                logger.error(f"Error processing user {user_id}: {str(e)}", exc_info=True)
+                continue
+
+        logger.info("Completed daily check-in execution")
 
     def find_member(self, user_id):
         for guild in self.bot.guilds:
@@ -101,6 +127,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         user_profile['total_coins'] += points
         logger.info(f"Added {points} points to user {user_id}. New total: {user_profile['total_coins']}")
         await self.data_provider.save_user_profile(user_profile)
+        return user_profile['total_coins']
 
     async def update_user_streak(self, user_id: str):
         user_profile = await self.data_provider.get_user_profile(user_id)
