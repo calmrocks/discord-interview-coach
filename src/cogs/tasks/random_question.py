@@ -26,6 +26,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         current_time = datetime.now()
 
         for user_id in self.test_user_ids:
+            user_id = str(user_id)
             user = self.bot.get_user(int(user_id))
             if not user:
                 logger.warning(f"User with ID {user_id} not found")
@@ -95,6 +96,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         return message
 
     async def add_points(self, user_id: str, points: int):
+        user_id = str(user_id)
         user_profile = await self.data_provider.get_user_profile(user_id)
         user_profile['total_coins'] += points
         logger.info(f"Added {points} points to user {user_id}. New total: {user_profile['total_coins']}")
@@ -119,6 +121,7 @@ class RandomQuestions(commands.Cog, BaseScheduledTask):
         return user_profile['current_streak']['count']
 
     async def generate_streak_message(self, user_id: str, streak: int):
+        user_id = str(user_id)
         user_profile = await self.data_provider.get_user_profile(user_id)
         level_config = await self.data_provider.get_level_config()
 

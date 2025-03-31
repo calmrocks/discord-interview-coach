@@ -26,11 +26,13 @@ class FileDataManager(DataManager):
         logger.info("Directories created/verified")
 
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
+        user_id = str(user_id)
         logger.info(f"Getting user profile for user_id: {user_id}")
         try:
             with open(self.USER_PROFILES_FILE, 'r') as f:
                 for line in f:
                     profile = json.loads(line)
+                    logger.info(f"Loaded profile: {profile}")
                     if profile['user_id'] == user_id:
                         logger.info(f"Found existing profile for user_id: {user_id}")
                         logger.debug(f"Profile data: {profile}")
@@ -76,7 +78,7 @@ class FileDataManager(DataManager):
         # Update or add the profile
         updated = False
         for i, p in enumerate(profiles):
-            if p['user_id'] == profile['user_id']:
+            if str(p['user_id']) == str(profile['user_id']):
                 logger.info(f"Updating existing profile for user_id: {profile['user_id']}")
                 logger.debug(f"Old profile: {p}")
                 logger.debug(f"New profile: {profile}")
